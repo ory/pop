@@ -1,7 +1,6 @@
 package pop
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -214,13 +213,11 @@ func (s *MySQLSuite) Test_MySQL_DDL_Operations() {
 
 func (s *MySQLSuite) Test_MySQL_DDL_Schema() {
 	r := s.Require()
-
-	f, err := ioutil.TempFile(os.TempDir(), "pop_test_mysql_dump")
+	f, err := os.CreateTemp(s.T().TempDir(), "pop_test_mysql_dump")
 	r.NoError(err)
-	defer func() {
-		f.Close()
-		os.Remove(f.Name())
-	}()
+	s.T().Cleanup(func() {
+		_ = f.Close()
+	})
 
 	// do it against "pop_test"
 	err = PDB.Dialect.DumpSchema(f)

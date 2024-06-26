@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -102,7 +101,7 @@ func ParseConfig(r io.Reader) (map[string]*ConnectionDetails, error) {
 			return envy.Get(s1, "")
 		},
 	})
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

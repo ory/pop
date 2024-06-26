@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -178,7 +177,7 @@ func genericLoadSchema(d dialect, r io.Reader) error {
 	defer db.Close()
 
 	// Get reader contents
-	contents, err := ioutil.ReadAll(r)
+	contents, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
