@@ -110,15 +110,17 @@ func (cd *ConnectionDetails) withURL() error {
 	}
 	cd.Database = strings.TrimPrefix(u.Path, "/")
 
-	hp := strings.Split(u.Host, ":")
-	cd.Host = hp[0]
-	if len(hp) > 1 {
-		cd.Port = hp[1]
+	cd.Host = u.Hostname()
+	if u.Port() != "" {
+		cd.Port = u.Port()
 	}
 
 	if u.User != nil {
 		cd.User = u.User.Username()
 		cd.Password, _ = u.User.Password()
+	}
+	for k, v := range u.Query() {
+		cd.setOption(k, v[0])
 	}
 	cd.RawOptions = u.RawQuery
 

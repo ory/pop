@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -213,18 +214,31 @@ func (p *cockroach) DropDB() error {
 }
 
 func (p *cockroach) URL() string {
-	c := p.ConnectionDetails
-	if c.URL != "" {
-		return c.URL
+	if p.ConnectionDetails.URL != "" {
+		return p.ConnectionDetails.URL
 	}
-	s := "postgres://%s:%s@%s:%s/%s?%s"
-	return fmt.Sprintf(s, c.User, url.QueryEscape(c.Password), c.Host, c.Port, c.Database, c.OptionsString(""))
+	return p.url().String()
+}
+
+func (p *cockroach) url() *url.URL {
+	c := p.ConnectionDetails
+	q := url.Values{}
+	for k, v := range c.Options {
+		q.Set(k, v)
+	}
+	return &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.User, c.Password),
+		Host:     net.JoinHostPort(c.Host, c.Port),
+		Path:     "/" + c.Database,
+		RawQuery: q.Encode(),
+	}
 }
 
 func (p *cockroach) urlWithoutDb() string {
-	c := p.ConnectionDetails
-	s := "postgres://%s:%s@%s:%s/?%s"
-	return fmt.Sprintf(s, c.User, url.QueryEscape(c.Password), c.Host, c.Port, c.OptionsString(""))
+	u := p.url()
+	u.Path = "/"
+	return u.String()
 }
 
 func (p *cockroach) MigrationURL() string {
@@ -249,7 +263,7 @@ func (p *cockroach) FizzTranslator() fizz.Translator {
 }
 
 func (p *cockroach) DumpSchema(w io.Writer) error {
-	cmd := exec.Command("cockroach", "sql", "--url", p.Details().URL, "-e", "SHOW CREATE ALL TABLES", "--format", "raw")
+	cmd := exec.Command("cockroach", "sql", "--url", p.URL(), "-e", "SHOW CREATE ALL TABLES", "--format", "raw")
 
 	c := p.ConnectionDetails
 	if defaults.String(c.option("sslmode"), "disable") == "disable" || strings.Contains(c.RawOptions, "sslmode=disable") {
@@ -358,8 +372,10 @@ func newCockroach(deets *ConnectionDetails) (dialect, error) {
 }
 
 func finalizerCockroach(cd *ConnectionDetails) {
-	appName := filepath.Base(os.Args[0])
-	cd.setOptionWithDefault("application_name", cd.option("application_name"), appName)
+	if cd.URL == "" {
+		appName := filepath.Base(os.Args[0])
+		cd.setOptionWithDefault("application_name", cd.option("application_name"), appName)
+	}
 	cd.Port = defaults.String(cd.Port, portCockroach)
 	if cd.URL != "" {
 		cd.URL = "postgres://" + trimCockroachPrefix(cd.URL)
