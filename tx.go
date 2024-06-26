@@ -4,15 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math/rand"
-	"time"
 
+	"github.com/gobuffalo/pop/v6/internal/randx"
 	"github.com/jmoiron/sqlx"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 // Tx stores a transaction with an ID to keep track.
 type Tx struct {
@@ -23,7 +18,7 @@ type Tx struct {
 
 func newTX(ctx context.Context, db *dB, opts *sql.TxOptions) (*Tx, error) {
 	t := &Tx{
-		ID: rand.Int(),
+		ID: randx.NonNegativeInt(),
 		db: db.SQLDB(),
 	}
 	tx, err := db.BeginTxx(ctx, opts)

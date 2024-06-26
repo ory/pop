@@ -1,16 +1,11 @@
 package randx
 
 import (
-	"math/rand"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	rand.Seed(1)
-}
 
 func Test_String(t *testing.T) {
 	r := require.New(t)
@@ -25,7 +20,7 @@ func Test_String_Parallel(t *testing.T) {
 		go func() {
 			id := String(30)
 			if len(id) != 30 {
-				t.FailNow()
+				t.Fail()
 			}
 			wg.Done()
 		}()
