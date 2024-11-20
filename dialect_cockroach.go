@@ -357,10 +357,6 @@ func (p *cockroach) AfterOpen(c *Connection) error {
 	}
 	log(logging.Debug, "server: %v %v %v", p.info.product, p.info.license, p.info.version)
 
-	if err := c.RawQuery("SET unbounded_parallel_scans = on").Exec(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
