@@ -24,6 +24,7 @@ type store interface {
 	SQLDB() *sql.DB
 
 	// Context versions to wrap with contextStore
+	PingContext(context.Context) error
 	SelectContext(context.Context, interface{}, string, ...interface{}) error
 	GetContext(context.Context, interface{}, string, ...interface{}) error
 	NamedExecContext(context.Context, string, interface{}) (sql.Result, error)
@@ -38,6 +39,10 @@ type store interface {
 type contextStore struct {
 	store
 	ctx context.Context
+}
+
+func (s contextStore) PingContext(context.Context) error {
+	return s.store.PingContext(s.ctx)
 }
 
 func (s contextStore) Transaction() (*Tx, error) {

@@ -33,6 +33,10 @@ func (tx *Tx) SQLDB() *sql.DB {
 	return tx.db
 }
 
+func (tx *Tx) PingContext(ctx context.Context) error {
+	return tx.db.PingContext(ctx)
+}
+
 // TransactionContext simply returns the current transaction,
 // this is defined so it implements the `Store` interface.
 func (tx *Tx) TransactionContext(ctx context.Context) (*Tx, error) {
