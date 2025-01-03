@@ -111,7 +111,7 @@ func (c *Connection) Open() error {
 	}
 	details := c.Dialect.Details()
 
-	db, err := openPotentiallyInstrumentedConnection(c.Context(), c.Dialect, c.Dialect.URL())
+	db, pool, err := openPotentiallyInstrumentedConnection(c.Context(), c.Dialect, c.Dialect.URL())
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (c *Connection) Open() error {
 		db = db.Unsafe()
 	}
 
-	c.Store = &dB{db}
+	c.Store = &dB{DB: db, p: pool}
 	if d, ok := c.Dialect.(afterOpenable); ok {
 		if err := d.AfterOpen(c); err != nil {
 			c.Store = nil

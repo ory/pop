@@ -3,16 +3,22 @@ package pop
 import (
 	"context"
 	"database/sql"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/jmoiron/sqlx"
 )
 
 type dB struct {
 	*sqlx.DB
+	p *pgxpool.Pool
 }
 
 func (db *dB) SQLDB() *sql.DB {
 	return db.DB.DB
+}
+
+func (db *dB) PGXPool() *pgxpool.Pool {
+	return db.p
 }
 
 func (db *dB) TransactionContext(ctx context.Context) (*Tx, error) {

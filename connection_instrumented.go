@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+	"strings"
 	"sync"
 
 	mysqld "github.com/go-sql-driver/mysql"
@@ -86,79 +87,40 @@ func instrumentDriver(deets *ConnectionDetails, defaultDriverName string) (drive
 // translate arguments (e.g. `?` to `$1`) in SQL queries. Because we use
 // a custom driver name when using instrumentation, this detection would fail
 // otherwise.
-func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn string) (*sqlx.DB, error) {
+func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn string) (*sqlx.DB, *pgxpool.Pool, error) {
 	driverName, dialect, err := instrumentDriver(c.Details(), c.DefaultDriver())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	switch CanonicalDialect(c.DefaultDriver()) {
-	case nameCockroach:
-		fallthrough
-	case namePostgreSQL:
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			return nil, err
+	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
+	if strings.Contains(dsn, "pool_min_conns=") {
+		// But of course only on Cockroach and PostgreSQL.
+		switch CanonicalDialect(c.DefaultDriver()) {
+		case nameCockroach:
+			fallthrough
+		case namePostgreSQL:
+			pool, err := pgxpool.New(ctx, dsn)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			db := stdlib.OpenDBFromPool(pool)
+			// GetPoolConnector creates a new driver.Connector from the given *pgxpool.Pool. By using this be sure to set the
+			// maximum idle connections of the *sql.DB created with this connector to zero since they must be managed from the
+			// *pgxpool.Pool. This is required to avoid acquiring all the connections from the pgxpool and starving any direct
+			// users of the pgxpool.
+			//
+			// https://github.com/jackc/pgx/blob/c2175fe46e3d6f43af14a21b47386739d15e4ee0/stdlib/sql.go#L194-L197
+			db.SetMaxIdleConns(0)
+
+			return sqlx.NewDb(db, dialect), pool, nil
 		}
-
-		db := stdlib.OpenDBFromPool(pool)
-		// GetPoolConnector creates a new driver.Connector from the given *pgxpool.Pool. By using this be sure to set the
-		// maximum idle connections of the *sql.DB created with this connector to zero since they must be managed from the
-		// *pgxpool.Pool. This is required to avoid acquiring all the connections from the pgxpool and starving any direct
-		// users of the pgxpool.
-		//
-		// https://github.com/jackc/pgx/blob/c2175fe46e3d6f43af14a21b47386739d15e4ee0/stdlib/sql.go#L194-L197
-		db.SetMaxIdleConns(0)
-
-		/**
-		// Create a pgx pool
-		pool, err := pgxpool.New(context.Background(), "postgres://user:pass@localhost:5432/dbname")
-		if err != nil {
-		    log.Fatalf("Failed to create pgx pool: %v", err)
-		}
-
-		// Define metrics
-		var (
-		    totalConns = prometheus.NewGaugeFunc(
-		        prometheus.GaugeOpts{
-		            Name: "pgx_pool_total_connections",
-		            Help: "Number of total connections in the pgx pool",
-		        },
-		        func() float64 {
-		            stats := pool.Stat()
-		            return float64(stats.TotalConns())
-		        },
-		    )
-		    idleConns = prometheus.NewGaugeFunc(
-		        prometheus.GaugeOpts{
-		            Name: "pgx_pool_idle_connections",
-		            Help: "Number of idle connections in the pgx pool",
-		        },
-		        func() float64 {
-		            stats := pool.Stat()
-		            return float64(stats.IdleConns())
-		        },
-		    )
-		    busyConns = prometheus.NewGaugeFunc(
-		        prometheus.GaugeOpts{
-		            Name: "pgx_pool_busy_connections",
-		            Help: "Number of busy connections in the pgx pool",
-		        },
-		        func() float64 {
-		            stats := pool.Stat()
-		            return float64(stats.TotalConns() - stats.IdleConns())
-		        },
-		    )
-		)
-
-		*/
-
-		return sqlx.NewDb(db, dialect), nil
 	}
 
 	con, err := sql.Open(driverName, dsn)
 	if err != nil {
-		return nil, fmt.Errorf("could not open database connection: %w", err)
+		return nil, nil, fmt.Errorf("could not open database connection: %w", err)
 	}
 
 	details := c.Details()
@@ -175,5 +137,5 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 		con.SetConnMaxIdleTime(details.ConnMaxIdleTime)
 	}
 
-	return sqlx.NewDb(con, dialect), nil
+	return sqlx.NewDb(con, dialect), nil, nil
 }
