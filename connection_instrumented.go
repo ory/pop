@@ -110,6 +110,49 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 		// https://github.com/jackc/pgx/blob/c2175fe46e3d6f43af14a21b47386739d15e4ee0/stdlib/sql.go#L194-L197
 		db.SetMaxIdleConns(0)
 
+		/**
+		// Create a pgx pool
+		pool, err := pgxpool.New(context.Background(), "postgres://user:pass@localhost:5432/dbname")
+		if err != nil {
+		    log.Fatalf("Failed to create pgx pool: %v", err)
+		}
+
+		// Define metrics
+		var (
+		    totalConns = prometheus.NewGaugeFunc(
+		        prometheus.GaugeOpts{
+		            Name: "pgx_pool_total_connections",
+		            Help: "Number of total connections in the pgx pool",
+		        },
+		        func() float64 {
+		            stats := pool.Stat()
+		            return float64(stats.TotalConns())
+		        },
+		    )
+		    idleConns = prometheus.NewGaugeFunc(
+		        prometheus.GaugeOpts{
+		            Name: "pgx_pool_idle_connections",
+		            Help: "Number of idle connections in the pgx pool",
+		        },
+		        func() float64 {
+		            stats := pool.Stat()
+		            return float64(stats.IdleConns())
+		        },
+		    )
+		    busyConns = prometheus.NewGaugeFunc(
+		        prometheus.GaugeOpts{
+		            Name: "pgx_pool_busy_connections",
+		            Help: "Number of busy connections in the pgx pool",
+		        },
+		        func() float64 {
+		            stats := pool.Stat()
+		            return float64(stats.TotalConns() - stats.IdleConns())
+		        },
+		    )
+		)
+
+		*/
+
 		return sqlx.NewDb(db, dialect), nil
 	}
 
