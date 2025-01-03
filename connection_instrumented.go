@@ -1,9 +1,12 @@
 package pop
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"sync"
 
 	mysqld "github.com/go-sql-driver/mysql"
@@ -83,15 +86,50 @@ func instrumentDriver(deets *ConnectionDetails, defaultDriverName string) (drive
 // translate arguments (e.g. `?` to `$1`) in SQL queries. Because we use
 // a custom driver name when using instrumentation, this detection would fail
 // otherwise.
-func openPotentiallyInstrumentedConnection(c dialect, dsn string) (*sqlx.DB, error) {
+func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn string) (*sqlx.DB, error) {
 	driverName, dialect, err := instrumentDriver(c.Details(), c.DefaultDriver())
 	if err != nil {
 		return nil, err
 	}
 
+	switch CanonicalDialect(c.DefaultDriver()) {
+	case nameCockroach:
+		fallthrough
+	case namePostgreSQL:
+		pool, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			return nil, err
+		}
+
+		db := stdlib.OpenDBFromPool(pool)
+		// GetPoolConnector creates a new driver.Connector from the given *pgxpool.Pool. By using this be sure to set the
+		// maximum idle connections of the *sql.DB created with this connector to zero since they must be managed from the
+		// *pgxpool.Pool. This is required to avoid acquiring all the connections from the pgxpool and starving any direct
+		// users of the pgxpool.
+		//
+		// https://github.com/jackc/pgx/blob/c2175fe46e3d6f43af14a21b47386739d15e4ee0/stdlib/sql.go#L194-L197
+		db.SetMaxIdleConns(0)
+
+		return sqlx.NewDb(db, dialect), nil
+	}
+
 	con, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("could not open database connection: %w", err)
+	}
+
+	details := c.Details()
+	if details.Pool != 0 {
+		con.SetMaxOpenConns(details.Pool)
+	}
+	if details.IdlePool != 0 {
+		con.SetMaxIdleConns(details.IdlePool)
+	}
+	if details.ConnMaxLifetime > 0 {
+		con.SetConnMaxLifetime(details.ConnMaxLifetime)
+	}
+	if details.ConnMaxIdleTime > 0 {
+		con.SetConnMaxIdleTime(details.ConnMaxIdleTime)
 	}
 
 	return sqlx.NewDb(con, dialect), nil

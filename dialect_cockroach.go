@@ -3,6 +3,7 @@ package pop
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -176,7 +177,7 @@ func (p *cockroach) CreateDB() error {
 	// createdb -h db -p 5432 -U cockroach enterprise_development
 	deets := p.ConnectionDetails
 
-	db, err := openPotentiallyInstrumentedConnection(p, p.urlWithoutDb())
+	db, err := openPotentiallyInstrumentedConnection(context.Background(), p, p.urlWithoutDb())
 	if err != nil {
 		return fmt.Errorf("error creating Cockroach database %s: %w", deets.Database, err)
 	}
@@ -196,7 +197,7 @@ func (p *cockroach) CreateDB() error {
 func (p *cockroach) DropDB() error {
 	deets := p.ConnectionDetails
 
-	db, err := openPotentiallyInstrumentedConnection(p, p.urlWithoutDb())
+	db, err := openPotentiallyInstrumentedConnection(context.Background(), p, p.urlWithoutDb())
 	if err != nil {
 		return fmt.Errorf("error dropping Cockroach database %s: %w", deets.Database, err)
 	}
