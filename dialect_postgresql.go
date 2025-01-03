@@ -125,7 +125,7 @@ func (p *postgresql) CreateDB() error {
 	// createdb -h db -p 5432 -U postgres enterprise_development
 	deets := p.ConnectionDetails
 
-	db, err := openPotentiallyInstrumentedConnection(context.Background(), p, p.urlWithoutDb())
+	db, _, err := openPotentiallyInstrumentedConnection(context.Background(), p, p.urlWithoutDb())
 	if err != nil {
 		return fmt.Errorf("error creating PostgreSQL database %s: %w", deets.Database, err)
 	}
@@ -145,7 +145,7 @@ func (p *postgresql) CreateDB() error {
 func (p *postgresql) DropDB() error {
 	deets := p.ConnectionDetails
 
-	db, err := openPotentiallyInstrumentedConnection(context.Background(), p, p.urlWithoutDb())
+	db, _, err := openPotentiallyInstrumentedConnection(context.Background(), p, p.urlWithoutDb())
 	if err != nil {
 		return fmt.Errorf("error dropping PostgreSQL database %s: %w", deets.Database, err)
 	}
