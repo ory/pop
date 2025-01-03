@@ -105,15 +105,8 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 				return nil, nil, err
 			}
 
+			// Automatically sets db.SetMaxIdleConns(0)
 			db := stdlib.OpenDBFromPool(pool)
-			// GetPoolConnector creates a new driver.Connector from the given *pgxpool.Pool. By using this be sure to set the
-			// maximum idle connections of the *sql.DB created with this connector to zero since they must be managed from the
-			// *pgxpool.Pool. This is required to avoid acquiring all the connections from the pgxpool and starving any direct
-			// users of the pgxpool.
-			//
-			// https://github.com/jackc/pgx/blob/c2175fe46e3d6f43af14a21b47386739d15e4ee0/stdlib/sql.go#L194-L197
-			db.SetMaxIdleConns(0)
-
 			return sqlx.NewDb(db, dialect), pool, nil
 		}
 	}
