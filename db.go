@@ -22,15 +22,15 @@ func (db *dB) PGXPool() *pgxpool.Pool {
 }
 
 func (db *dB) TransactionContext(ctx context.Context) (*Tx, error) {
-	return newTX(ctx, db, nil)
+	return newTX(ctx, db, db.p, nil)
 }
 
 func (db *dB) Transaction() (*Tx, error) {
-	return newTX(context.Background(), db, nil)
+	return newTX(context.Background(), db, db.p, nil)
 }
 
 func (db *dB) TransactionContextOptions(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
-	return newTX(ctx, db, opts)
+	return newTX(ctx, db, db.p, opts)
 }
 
 func (db *dB) Rollback() error {

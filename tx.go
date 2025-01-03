@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gobuffalo/pop/v6/internal/randx"
 	"github.com/jmoiron/sqlx"
@@ -13,13 +14,15 @@ import (
 type Tx struct {
 	ID int
 	*sqlx.Tx
-	db *sql.DB
+	db   *sql.DB
+	pool *pgxpool.Pool
 }
 
-func newTX(ctx context.Context, db *dB, opts *sql.TxOptions) (*Tx, error) {
+func newTX(ctx context.Context, db *dB, pool *pgxpool.Pool, opts *sql.TxOptions) (*Tx, error) {
 	t := &Tx{
-		ID: randx.NonNegativeInt(),
-		db: db.SQLDB(),
+		ID:   randx.NonNegativeInt(),
+		db:   db.SQLDB(),
+		pool: pool,
 	}
 	tx, err := db.BeginTxx(ctx, opts)
 	t.Tx = tx
@@ -31,6 +34,10 @@ func newTX(ctx context.Context, db *dB, opts *sql.TxOptions) (*Tx, error) {
 
 func (tx *Tx) SQLDB() *sql.DB {
 	return tx.db
+}
+
+func (tx *Tx) PGXPool() *pgxpool.Pool {
+	return tx.pool
 }
 
 func (tx *Tx) PingContext(ctx context.Context) error {
