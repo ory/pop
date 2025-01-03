@@ -3,7 +3,7 @@ package pop
 import (
 	"context"
 	"database/sql"
-
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -22,6 +22,7 @@ type store interface {
 	Close() error
 
 	SQLDB() *sql.DB
+	PGXPool() *pgxpool.Pool
 
 	// Context versions to wrap with contextStore
 	PingContext(context.Context) error
