@@ -1,9 +1,13 @@
 package pop
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"strings"
 	"sync"
 
 	mysqld "github.com/go-sql-driver/mysql"
@@ -83,16 +87,48 @@ func instrumentDriver(deets *ConnectionDetails, defaultDriverName string) (drive
 // translate arguments (e.g. `?` to `$1`) in SQL queries. Because we use
 // a custom driver name when using instrumentation, this detection would fail
 // otherwise.
-func openPotentiallyInstrumentedConnection(c dialect, dsn string) (*sqlx.DB, error) {
+func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn string) (*sqlx.DB, *pgxpool.Pool, error) {
 	driverName, dialect, err := instrumentDriver(c.Details(), c.DefaultDriver())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
+	if strings.Contains(dsn, "pool_min_conns=") {
+		// But of course only on Cockroach and PostgreSQL.
+		switch CanonicalDialect(c.DefaultDriver()) {
+		case nameCockroach:
+			fallthrough
+		case namePostgreSQL:
+			pool, err := pgxpool.New(ctx, dsn)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			// Automatically sets db.SetMaxIdleConns(0)
+			db := stdlib.OpenDBFromPool(pool)
+			return sqlx.NewDb(db, dialect), pool, nil
+		}
 	}
 
 	con, err := sql.Open(driverName, dsn)
 	if err != nil {
-		return nil, fmt.Errorf("could not open database connection: %w", err)
+		return nil, nil, fmt.Errorf("could not open database connection: %w", err)
 	}
 
-	return sqlx.NewDb(con, dialect), nil
+	details := c.Details()
+	if details.Pool != 0 {
+		con.SetMaxOpenConns(details.Pool)
+	}
+	if details.IdlePool != 0 {
+		con.SetMaxIdleConns(details.IdlePool)
+	}
+	if details.ConnMaxLifetime > 0 {
+		con.SetConnMaxLifetime(details.ConnMaxLifetime)
+	}
+	if details.ConnMaxIdleTime > 0 {
+		con.SetConnMaxIdleTime(details.ConnMaxIdleTime)
+	}
+
+	return sqlx.NewDb(con, dialect), nil, nil
 }

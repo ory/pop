@@ -2,6 +2,7 @@ package pop
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/gob"
 	"fmt"
@@ -170,7 +171,7 @@ func genericLoadSchema(d dialect, r io.Reader) error {
 	deets := d.Details()
 
 	// Open DB connection on the target DB
-	db, err := openPotentiallyInstrumentedConnection(d, d.MigrationURL())
+	db, _, err := openPotentiallyInstrumentedConnection(context.Background(), d, d.MigrationURL())
 	if err != nil {
 		return fmt.Errorf("unable to load schema for %s: %w", deets.Database, err)
 	}
