@@ -107,6 +107,17 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 
 			// Automatically sets db.SetMaxIdleConns(0)
 			db := stdlib.OpenDBFromPool(pool)
+			db.SetMaxOpenConns(0) // pgxpool does the pooling for us.
+
+			details := c.Details()
+			if details.ConnMaxLifetime > 0 {
+				db.SetConnMaxLifetime(details.ConnMaxLifetime)
+			}
+
+			if details.ConnMaxIdleTime > 0 {
+				db.SetConnMaxIdleTime(details.ConnMaxIdleTime)
+			}
+
 			return sqlx.NewDb(db, dialect), pool, nil
 		}
 	}
