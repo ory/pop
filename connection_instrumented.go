@@ -105,9 +105,9 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 				return nil, nil, err
 			}
 
-			// Automatically sets db.SetMaxIdleConns(0)
-			db := stdlib.OpenDBFromPool(pool)
-			return sqlx.NewDb(db, dialect), pool, nil
+			// We don't need to configure the database/sql connection pool because pgxpool already does that.
+			// Reference: https://github.com/jackc/pgx/discussions/2222#discussioncomment-11772064
+			return sqlx.NewDb(stdlib.OpenDBFromPool(pool), dialect), pool, nil
 		}
 	}
 
