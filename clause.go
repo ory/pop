@@ -28,8 +28,9 @@ func (c clauses) Args() (args []interface{}) {
 }
 
 type fromClause struct {
-	From string
-	As   string
+	From       string
+	As         string
+	ForceIndex string
 }
 
 type fromClauses []fromClause

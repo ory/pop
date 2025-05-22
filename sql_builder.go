@@ -114,7 +114,28 @@ func (sq *sqlBuilder) buildSelectSQL() string {
 
 	fc := sq.buildfromClauses()
 
-	sql := fmt.Sprintf("SELECT %s FROM %s", cols.Readable().SelectString(), fc)
+	sql := fmt.Sprintf("SELECT %s FROM ", cols.Readable().SelectString())
+
+	// FIXME: code path for `forceIndex == ""`.
+	if sq.Query.Connection.Dialect.Name() == "sqlite" {
+		sql += fmt.Sprintf("%s INDEXED BY %s ", fc.String(), sq.Query.forceIndex)
+	} else if sq.Query.Connection.Dialect.Name() == "mysql" {
+		sql += fmt.Sprintf("%s FORCE INDEX (%s) ", fc.String(), sq.Query.forceIndex)
+	} else if sq.Query.Connection.Dialect.Name() == "postgres" {
+		// Postgres does not support index hints/forced indexes.
+		sql += fmt.Sprintf("%s ", fc.String())
+	} else if sq.Query.Connection.Dialect.Name() == "cockroach" {
+		models := []*Model{
+			sq.Model,
+		}
+		for _, mc := range sq.Query.belongsToThroughClauses {
+			models = append(models, mc.Through)
+		}
+
+		for _, m := range models {
+			sql += fmt.Sprintf("%s@%s AS %s ", m.TableName(), sq.Query.forceIndex, m.Alias())
+		}
+	}
 
 	sql = sq.buildForceIndex(sql)
 	sql = sq.buildJoinClauses(sql)
@@ -123,6 +144,7 @@ func (sq *sqlBuilder) buildSelectSQL() string {
 	sql = sq.buildOrderClauses(sql)
 	sql = sq.buildPaginationClauses(sql)
 
+	fmt.Println("[D001]", sql)
 	return sql
 }
 
@@ -186,7 +208,7 @@ func (sq *sqlBuilder) buildWhereClauses(sql string) string {
 func (sq *sqlBuilder) buildForceIndex(sql string) string {
 	s := sq.Query.forceIndex
 	if len(s) > 0 {
-		sql += " " + sq.Query.Connection.Dialect.ForceIndexSQL(s)
+		sql += sq.Query.Connection.Dialect.ForceIndexSQL(s)
 	}
 
 	return sql

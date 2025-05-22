@@ -7,8 +7,9 @@ import (
 )
 
 type Person struct {
-	ID   int    `db:"id"`
-	Name string `db:"name"`
+	ID        string `db:"id"`
+	FirstName string `db:"first_name"`
+	LastName  string `db:"last_name"`
 }
 
 func (p Person) Person() string {
@@ -20,9 +21,9 @@ func TestForceIndexAllDialects(t *testing.T) {
 
 	connectionDetails := []ConnectionDetails{
 		{Dialect: "sqlite", URL: ":memory:"},
-		// {Dialect: "postgres", Database: "pop_test", Host: "127.0.0.1", Port: "5432", User: "postgres", Password: "postgres"},
-		{Dialect: "mysql", Database: "pop_test", Host: "127.0.0.1", Port: "3306", User: "pop", Password: "pop"},
-		{Dialect: "cockroach", Database: "database", Host: "127.0.0.1", Port: "26257", User: "user", Password: "pass"},
+		{Dialect: "mysql", Database: "mysql", Host: "127.0.0.1", Port: "3444", User: "root", Password: "secret"},
+		{Dialect: "postgres", Database: "postgres", Host: "127.0.0.1", Port: "3445", User: "postgres", Password: "secret"},
+		{Dialect: "cockroach", Database: "defaultdb", Host: "127.0.0.1", Port: "3446", User: "root", Password: "secret"},
 	}
 
 	for _, cd := range connectionDetails {
@@ -36,28 +37,28 @@ func TestForceIndexAllDialects(t *testing.T) {
 
 			err = conn.RawQuery(`DROP TABLE IF EXISTS people`).Exec()
 			r.NoError(err)
-			err = conn.RawQuery(`CREATE TABLE people(id INTEGER PRIMARY KEY NOT NULL, name text NOT NULL)`).Exec()
+			err = conn.RawQuery(`CREATE TABLE people(id VARCHAR(256) NOT NULL, first_name VARCHAR(256) NOT NULL, last_name VARCHAR(256) NOT NULL)`).Exec()
 			r.NoError(err)
 
-			err = conn.RawQuery(`CREATE INDEX people_idx ON people(id, name)`).Exec()
+			err = conn.RawQuery(`CREATE INDEX people_idx ON people(first_name, last_name)`).Exec()
 			r.NoError(err)
 
 			{
-				personCreate := Person{ID: 1, Name: "Joe"}
+				personCreate := Person{ID: "foo", FirstName: "George", LastName: "Washington"}
 				err = conn.Create(&personCreate)
 				r.NoError(err)
 			}
 			{
-				personCreate := Person{ID: 2, Name: "Jill"}
+				personCreate := Person{ID: "bar", FirstName: "Franklin", LastName: "Roosevelt"}
 				err = conn.Create(&personCreate)
 				r.NoError(err)
 			}
 
 			var personSelect Person
-			err = conn.Select("id").Where("name = ?", "Joe").ForceIndex("people_idx").First(&personSelect)
+			err = conn.Select("last_name").Where("first_name = ?", "Franklin").ForceIndex("people_idx").First(&personSelect)
 			r.NoError(err)
 
-			r.Equal(personSelect.ID, 1)
+			r.Equal(personSelect.LastName, "Roosevelt")
 		})
 	}
 }
