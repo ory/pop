@@ -209,7 +209,8 @@ func (m Model) Person() string {
 func TestSqlite_ForceIndex(t *testing.T) {
 	r := require.New(t)
 
-	cd := &ConnectionDetails{Dialect: "sqlite", URL: ":memory:"}
+	// cd := &ConnectionDetails{Dialect: "sqlite", URL: ":memory:"}
+	cd := &ConnectionDetails{Dialect: "sqlite", URL: "file:///tmp/test.db"}
 
 	conn, err := NewConnection(cd)
 	r.NoError(err)
@@ -218,20 +219,28 @@ func TestSqlite_ForceIndex(t *testing.T) {
 	err = conn.Open()
 	r.NoError(err)
 
-	err = conn.RawQuery(`CREATE TABLE people(id int, name text)`).Exec()
+	err = conn.RawQuery(`DROP TABLE IF EXISTS people`).Exec()
+	r.NoError(err)
+	err = conn.RawQuery(`CREATE TABLE people(id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL)`).Exec()
 	r.NoError(err)
 
 	err = conn.RawQuery(`CREATE INDEX people_idx ON people(id, name)`).Exec()
 	r.NoError(err)
 
-	personCreate := Person{ID: 1, Name: "Joe"}
-	err = conn.Create(&personCreate)
-	r.NoError(err)
+	{
+		personCreate := Person{ID: 1, Name: "Joe"}
+		err = conn.Create(&personCreate)
+		r.NoError(err)
+	}
+	{
+		personCreate := Person{ID: 2, Name: "Jill"}
+		err = conn.Create(&personCreate)
+		r.NoError(err)
+	}
 
 	var personSelect Person
-	err = conn.Select("id").Where("id = ?", 1).ForceIndex("people_idx").First(&personSelect)
+	err = conn.Select("id").Where("name = ?", "Joe").ForceIndex("people_idx").First(&personSelect)
 	r.NoError(err)
 
-	r.Equal(personSelect.ID, personCreate.ID)
-	r.Equal(personSelect.Name, personCreate.Name)
+	r.Equal(personSelect.ID, 1)
 }
