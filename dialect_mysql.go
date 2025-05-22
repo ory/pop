@@ -292,3 +292,7 @@ func finalizerMySQL(cd *ConnectionDetails) {
 }
 
 const mysqlTruncate = "SELECT concat('TRUNCATE TABLE `', TABLE_NAME, '`;') as stmt FROM INFORMATION_SCHEMA.TABLES WHERE table_schema = ? AND table_name <> ? AND table_type <> 'VIEW'"
+
+func (m *mysql) ForceIndexSQL(index string) string {
+	return " FORCE INDEX (" + index + ")"
+}

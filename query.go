@@ -33,6 +33,9 @@ type Query struct {
 	Paginator               *Paginator
 	Connection              *Connection
 	Operation               operation
+	// Force the use of a specific index.
+	// If the dialect does not support this feature, this is a no-op.
+	forceIndex string
 }
 
 // Clone will fill targetQ query with the connection used in q, if
@@ -110,6 +113,11 @@ func (c *Connection) Eager(fields ...string) *Connection {
 func (q *Query) Eager(fields ...string) *Query {
 	q.eager = true
 	q.eagerFields = append(q.eagerFields, fields...)
+	return q
+}
+
+func (q *Query) ForceIndex(index string) *Query {
+	q.forceIndex = index
 	return q
 }
 

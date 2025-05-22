@@ -41,6 +41,7 @@ type dialect interface {
 	LoadSchema(io.Reader) error
 	Lock(func() error) error
 	TruncateAll(*Connection) error
+	ForceIndexSQL(index string) string
 }
 
 type afterOpenable interface {

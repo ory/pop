@@ -276,3 +276,8 @@ BEGIN
    END LOOP;
 END
 $func$;`
+
+func (p *postgresql) ForceIndexSQL(index string) string {
+	// Postgres does not support forcing the use of an index.
+	return " "
+}

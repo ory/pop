@@ -28,3 +28,7 @@ func (m *mariaDB) FizzTranslator() fizz.Translator {
 	t := translators.NewMariaDB(m.URL(), m.Details().Database)
 	return t
 }
+
+func (m *mariaDB) ForceIndexSQL(index string) string {
+	return " FORCE INDEX (" + index + ")"
+}

@@ -352,3 +352,7 @@ func newSQLiteDriver() (driver.Driver, error) {
 	}
 	return db.Driver(), db.Close()
 }
+
+func (m *sqlite) ForceIndexSQL(index string) string {
+	return " INDEXED BY " + index + " "
+}

@@ -116,6 +116,7 @@ func (sq *sqlBuilder) buildSelectSQL() string {
 
 	sql := fmt.Sprintf("SELECT %s FROM %s", cols.Readable().SelectString(), fc)
 
+	sql = sq.buildForceIndex(sql)
 	sql = sq.buildJoinClauses(sql)
 	sql = sq.buildWhereClauses(sql)
 	sql = sq.buildGroupClauses(sql)
@@ -179,6 +180,15 @@ func (sq *sqlBuilder) buildWhereClauses(sql string) string {
 		sql = fmt.Sprintf("%s WHERE %s", sql, wc.Join(" AND "))
 		sq.args = append(sq.args, wc.Args()...)
 	}
+	return sql
+}
+
+func (sq *sqlBuilder) buildForceIndex(sql string) string {
+	s := sq.Query.forceIndex
+	if len(s) > 0 {
+		sql += " " + sq.Query.Connection.Dialect.ForceIndexSQL(s)
+	}
+
 	return sql
 }
 

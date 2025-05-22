@@ -399,3 +399,7 @@ func (p *cockroach) tablesQuery() string {
 	}
 	return tableQuery
 }
+
+func (p *cockroach) ForceIndexSQL(index string) string {
+	return "@" + index + " "
+}
