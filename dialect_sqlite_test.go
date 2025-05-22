@@ -196,3 +196,42 @@ func TestSqlite_NewDriver(t *testing.T) {
 	_, err := newSQLiteDriver()
 	require.NoError(t, err)
 }
+
+type Person struct {
+	ID   int    `db:"id"`
+	Name string `db:"name"`
+}
+
+func (m Model) Person() string {
+	return "people"
+}
+
+func TestSqlite_ForceIndex(t *testing.T) {
+	r := require.New(t)
+
+	cd := &ConnectionDetails{Dialect: "sqlite", URL: ":memory:"}
+
+	conn, err := NewConnection(cd)
+	r.NoError(err)
+	r.NotNil(conn)
+
+	err = conn.Open()
+	r.NoError(err)
+
+	err = conn.RawQuery(`CREATE TABLE people(id int, name text)`).Exec()
+	r.NoError(err)
+
+	err = conn.RawQuery(`CREATE INDEX people_idx ON people(id, name)`).Exec()
+	r.NoError(err)
+
+	personCreate := Person{ID: 1, Name: "Joe"}
+	err = conn.Create(&personCreate)
+	r.NoError(err)
+
+	var personSelect Person
+	err = conn.Select("id").Where("id = ?", 1).ForceIndex("people_idx").First(&personSelect)
+	r.NoError(err)
+
+	r.Equal(personSelect.ID, personCreate.ID)
+	r.Equal(personSelect.Name, personCreate.Name)
+}
