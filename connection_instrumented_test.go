@@ -99,3 +99,30 @@ func (s *SQLiteSuite) Test_Instrumentation() {
 func (s *CockroachSuite) Test_Instrumentation() {
 	testInstrumentedDriver(&s.Suite)
 }
+
+func (s *CockroachSuite) Test_ConnectWithRetryLogic() {
+	r := s.Require()
+
+	// save and restore env var
+	orig := os.Getenv("SODA_DIALECT")
+	defer os.Setenv("SODA_DIALECT", orig)
+
+	_ = os.Setenv("SODA_DIALECT", "cockroach")
+
+	deets := *Connections["cockroach"].Dialect.Details()
+	deets.Options["retry_limit"] = "2"
+	deets.Options["retry_sleep"] = "1ms"
+
+	// fail with invalid port
+	badDSN := "postgresql://root@localhost:59999/bogus?pool_min_conns=1&sslmode=disable"
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
+
+	start := time.Now()
+	_, _, err := openPotentiallyInstrumentedConnection(ctx, Connections["cockroach"].Dialect, badDSN)
+	duration := time.Since(start)
+
+	r.Error(err)
+	r.GreaterOrEqual(duration, 2*time.Millisecond, "expected at least 2ms of backoff retries")
+}
