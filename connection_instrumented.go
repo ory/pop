@@ -5,13 +5,12 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"strings"
 	"sync"
 
 	mysqld "github.com/go-sql-driver/mysql"
 	"github.com/gobuffalo/pop/v6/logging"
+	"github.com/jackc/pgx/v5/pgxpool"
 	pgx "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	"github.com/luna-duclos/instrumentedsql"
@@ -95,20 +94,28 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 
 	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
 	if strings.Contains(dsn, "pool_min_conns=") {
+		var (
+			pool *pgxpool.Pool
+			err  error
+		)
 		// But of course only on Cockroach and PostgreSQL.
 		switch CanonicalDialect(c.DefaultDriver()) {
 		case nameCockroach:
-			fallthrough
-		case namePostgreSQL:
-			pool, err := pgxpool.New(ctx, dsn)
+			// CockroachDB has additional SQLSTATEs that indicate connections can be retried.
+			pool, err = connectWithRetry(ctx, dsn, c.Details())
 			if err != nil {
 				return nil, nil, err
 			}
 
-			// We don't need to configure the database/sql connection pool because pgxpool already does that.
-			// Reference: https://github.com/jackc/pgx/discussions/2222#discussioncomment-11772064
-			return sqlx.NewDb(stdlib.OpenDBFromPool(pool), dialect), pool, nil
+		case namePostgreSQL:
+			pool, err = pgxpool.New(ctx, dsn)
+			if err != nil {
+				return nil, nil, err
+			}
 		}
+		// We don't need to configure the database/sql connection pool because pgxpool already does that.
+		// Reference: https://github.com/jackc/pgx/discussions/2222#discussioncomment-11772064
+		return sqlx.NewDb(pgx.OpenDBFromPool(pool), dialect), pool, nil
 	}
 
 	con, err := sql.Open(driverName, dsn)

@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gobuffalo/fizz"
 	"github.com/gobuffalo/fizz/translators"
@@ -21,6 +24,8 @@ import (
 	"github.com/gobuffalo/pop/v6/internal/defaults"
 	"github.com/gobuffalo/pop/v6/logging"
 	"github.com/gofrs/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib" // Import PostgreSQL driver
 	"github.com/jmoiron/sqlx"
 )
@@ -40,6 +45,16 @@ func init() {
 }
 
 var _ dialect = &cockroach{}
+
+var retryableSQLStates = map[string]struct{}{
+	// Class 57 — Operator Intervention
+	"57000": {}, "57014": {}, "57P01": {}, "57P02": {},
+	"57P03": {}, "57P04": {}, "57P05": {},
+
+	// Class 08 — Connection Exception
+	"08000": {}, "08003": {}, "08006": {}, "08001": {},
+	"08004": {}, "08007": {}, "08P01": {},
+}
 
 // ServerInfo holds informational data about connected database server.
 type cockroachInfo struct {
@@ -398,4 +413,39 @@ func (p *cockroach) tablesQuery() string {
 		tableQuery = selectTablesQueryCockroachV1
 	}
 	return tableQuery
+}
+
+// isRetryableError checks if error is retryable.
+func isRetryableError(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		_, ok := retryableSQLStates[pgErr.SQLState()]
+		return ok
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+}
+
+// connectWithRetry wraps pgxpool.New with retry logic.
+func connectWithRetry(ctx context.Context, dsn string, cd *ConnectionDetails) (*pgxpool.Pool, error) {
+	var lastErr error
+	for attempt := 0; attempt <= cd.RetryLimit(); attempt++ {
+		pool, err := pgxpool.New(ctx, dsn)
+		if err == nil {
+			if pingErr := pool.Ping(ctx); pingErr == nil {
+				return pool, nil
+			} else {
+				err = pingErr
+			}
+		}
+
+		if !isRetryableError(err) {
+			return nil, err
+		}
+
+		backoff := cd.RetrySleep() * time.Duration(math.Pow(2, float64(attempt)))
+		log(logging.Debug, "Retrying pgxpool.New in %v (attempt %d): %v", backoff, attempt+1, err)
+		time.Sleep(backoff)
+		lastErr = err
+	}
+	return nil, fmt.Errorf("connectWithRetry: failed after retries: %w", lastErr)
 }
