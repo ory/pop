@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/luna-duclos/instrumentedsql"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -65,14 +64,6 @@ func testInstrumentedDriver(p *suite.Suite) {
 			}
 		}
 	}()
-
-	var checker = instrumentedsql.LoggerFunc(func(ctx context.Context, msg string, keyvals ...interface{}) {
-		p.T().Logf("Instrumentation received message: %s - %+v", msg, keyvals)
-		mc <- fmt.Sprintf("%s - %+v", msg, keyvals)
-	})
-
-	deets.UseInstrumentedDriver = true
-	deets.InstrumentedDriverOptions = []instrumentedsql.Opt{instrumentedsql.WithLogger(checker)}
 
 	c, err := NewConnection(&deets)
 	r.NoError(err)

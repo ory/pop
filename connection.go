@@ -272,7 +272,7 @@ func (c *Connection) TruncateAll() error {
 	return c.Dialect.TruncateAll(c)
 }
 
-func (c *Connection) timeFunc(name string, fn func() error) error {
+func (c *Connection) timeFunc(_ string, fn func() error) error {
 	start := time.Now()
 	err := fn()
 	atomic.AddInt64(&c.Elapsed, int64(time.Since(start)))
