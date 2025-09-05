@@ -43,7 +43,12 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 			return nil, nil, err
 		}
 
-		con := otelsql.OpenDB(pgxstdlib.GetPoolConnector(pool), otelopts...)
+		con := otelsql.OpenDB(pgxstdlib.GetPoolConnector(pool), append(otelopts, otelsql.WithSpanOptions(otelsql.SpanOptions{
+			Ping:                 false,
+			RowsNext:             false,
+			OmitRows:             true,
+			OmitConnectorConnect: true, // this does not work correctly with pgxpool
+		}))...)
 		con.SetMaxIdleConns(0) // important: see documentation for pgxstdlib.GetPoolConnector
 		return sqlx.NewDb(con, driver), pool, nil
 	} else {
