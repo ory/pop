@@ -1,78 +1,64 @@
 package pop
 
 import (
-	"context"
-	"fmt"
 	"os"
-	"strings"
-	"sync"
-	"time"
+	"slices"
 
 	"github.com/stretchr/testify/suite"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func testInstrumentedDriver(p *suite.Suite) {
-	r := p.Require()
-	deets := *Connections[os.Getenv("SODA_DIALECT")].Dialect.Details()
-
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
-	defer cancel()
-
-	// The WaitGroup and channel ensures that the logger is properly called. This can only happen
-	// when the instrumented driver is working as expected and returns the expected query.
 	var (
 		queryMySQL = "SELECT 1 FROM DUAL WHERE 1=?"
-		queryOther = "SELECT 1 WHERE 1=?"
-		mc         = make(chan string)
-		wg         sync.WaitGroup
+		query      = "SELECT 1 WHERE 1=?"
 		expected   = []string{
 			"SELECT 1 FROM DUAL WHERE 1=?",
 			"SELECT 1 FROM DUAL WHERE 1=$1",
 			"SELECT 1 WHERE 1=?",
 			"SELECT 1 WHERE 1=$1",
 		}
+		r        = p.Require()
+		recorder = tracetest.NewSpanRecorder()
+		provider = sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+		tracer   = provider.Tracer("test")
+		deets    = *Connections[os.Getenv("SODA_DIALECT")].Dialect.Details()
 	)
-
-	query := queryOther
+	deets.TracerProvider = provider
 	if os.Getenv("SODA_DIALECT") == "mysql" {
 		query = queryMySQL
 	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var messages []string
-		var found bool
-		for {
-			select {
-			case m := <-mc:
-				p.T().Logf("Received message: %s", m)
-				messages = append(messages, m)
-				for _, e := range expected {
-					if strings.Contains(m, e) {
-						p.T().Logf("Found part %s in %s", e, m)
-						found = true
-						break
-					}
-				}
-			case <-ctx.Done():
-				if !found {
-					r.FailNow(fmt.Sprintf("Expected tracer to return the \"%s\" query but only the following messages have been received:\n\n\t%s", query, strings.Join(messages, "\n\t")))
-					return
-				}
-				return
-			}
-		}
-	}()
 
 	c, err := NewConnection(&deets)
 	r.NoError(err)
 	r.NoError(c.Open())
 
-	err = c.WithContext(context.TODO()).RawQuery(query, 1).Exec()
+	ctx, span := tracer.Start(p.T().Context(), "parent")
+
+	err = c.WithContext(ctx).RawQuery(query, 1).Exec()
 	r.NoError(err)
 
-	wg.Wait()
+	span.End()
+
+	spans := recorder.Ended()
+	var found bool
+	for _, span := range spans {
+		if span.Name() == "parent" {
+			continue
+		}
+
+		for _, e := range expected {
+			if slices.ContainsFunc(span.Attributes(), func(a attribute.KeyValue) bool {
+				return string(a.Key) == "db.statement" && a.Value.AsString() == e
+			}) {
+				found = true
+				break
+			}
+		}
+	}
+	r.True(found)
 }
 
 func (s *PostgreSQLSuite) Test_Instrumentation() {
