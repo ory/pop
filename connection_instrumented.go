@@ -3,7 +3,6 @@ package pop
 import (
 	"cmp"
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -36,7 +35,6 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 					trace.TracerProvider(noop.NewTracerProvider()),
 				)),
 		}
-		con *sql.DB
 	)
 	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
 	if strings.Contains(dsn, "pool_min_conns=") && (CanonicalDialect(driver) == nameCockroach || CanonicalDialect(driver) == namePostgreSQL) {
@@ -45,11 +43,11 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 			return nil, nil, err
 		}
 
-		con = otelsql.OpenDB(pgxstdlib.GetPoolConnector(pool), otelopts...)
+		con := otelsql.OpenDB(pgxstdlib.GetPoolConnector(pool), otelopts...)
 		con.SetMaxIdleConns(0) // important: see documentation for pgxstdlib.GetPoolConnector
+		return sqlx.NewDb(con, driver), pool, nil
 	} else {
-		var err error
-		con, err = otelsql.Open(driver, dsn, otelopts...)
+		con, err := otelsql.Open(driver, dsn, otelopts...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("could not open database connection: %w", err)
 		}
@@ -67,7 +65,6 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 		if details.ConnMaxIdleTime > 0 {
 			con.SetConnMaxIdleTime(details.ConnMaxIdleTime)
 		}
+		return sqlx.NewDb(con, driver), nil, nil
 	}
-
-	return sqlx.NewDb(con, driver), nil, nil
 }
