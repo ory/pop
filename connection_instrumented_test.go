@@ -61,18 +61,18 @@ func testInstrumentedDriver(p *suite.Suite) {
 	r.True(found)
 }
 
-func (s *PostgreSQLSuite) Test_Instrumentation() {
+func (s *PostgreSQLSuite) TestInstrumentationPostgreSQL() {
 	testInstrumentedDriver(&s.Suite)
 }
 
-func (s *MySQLSuite) Test_Instrumentation() {
+func (s *MySQLSuite) TestInstrumentationMySQL() {
 	testInstrumentedDriver(&s.Suite)
 }
 
-func (s *SQLiteSuite) Test_Instrumentation() {
+func (s *SQLiteSuite) TestInstrumentationSQLite() {
 	testInstrumentedDriver(&s.Suite)
 }
 
-func (s *CockroachSuite) Test_Instrumentation() {
+func (s *CockroachSuite) TestInstrumentationCockroachDB() {
 	testInstrumentedDriver(&s.Suite)
 }
