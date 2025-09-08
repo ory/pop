@@ -1606,7 +1606,11 @@ func Test_UpdateQuery(t *testing.T) {
 		// ID is ignored
 		count, err = tx.Where("true").UpdateQuery(&User{ID: 123, Name: nulls.NewString("Bar")}, "id", "name")
 		r.NoError(err)
-		r.EqualValues(3, count)
+		if tx.Dialect.Name() == nameMySQL || tx.Dialect.Name() == nameMariaDB {
+			r.EqualValues(1, count) // on UPDATE, MySQL/MariaDB count only rows with changes, not all matched rows
+		} else {
+			r.EqualValues(3, count)
+		}
 		r.NoError(tx.Find(u1b, u1.ID))
 		r.NoError(tx.Find(u2b, u2.ID))
 		r.NoError(tx.Find(u3b, u3.ID))

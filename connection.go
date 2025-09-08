@@ -98,6 +98,9 @@ func Connect(e string) (*Connection, error) {
 	if err := c.Open(); err != nil {
 		return c, fmt.Errorf("couldn't open connection for %s: %w", e, err)
 	}
+	if err := c.Store.PingContext(context.Background()); err != nil {
+		return c, fmt.Errorf("couldn't ping database for %s: %w", e, err)
+	}
 	return c, nil
 }
 
