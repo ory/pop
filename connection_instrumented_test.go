@@ -5,20 +5,19 @@ import (
 	"slices"
 
 	"github.com/stretchr/testify/suite"
-	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func testInstrumentedDriver(p *suite.Suite) {
 	var (
-		queryMySQL = "SELECT 1 FROM DUAL WHERE 1=?"
-		query      = "SELECT 1 WHERE 1=?"
+		queryMySQL = "SELECT 1 FROM DUAL WHERE (1+1)=?"
+		query      = "SELECT 1 WHERE (1+1)=?"
 		expected   = []string{
-			"SELECT 1 FROM DUAL WHERE 1=?",
-			"SELECT 1 FROM DUAL WHERE 1=$1",
-			"SELECT 1 WHERE 1=?",
-			"SELECT 1 WHERE 1=$1",
+			"SELECT 1 FROM DUAL WHERE (1+1)=?",
+			"SELECT 1 FROM DUAL WHERE (1+1)=$1",
+			"SELECT 1 WHERE (1+1)=?",
+			"SELECT 1 WHERE (1+1)=$1",
 		}
 		r        = p.Require()
 		recorder = tracetest.NewSpanRecorder()
@@ -37,28 +36,21 @@ func testInstrumentedDriver(p *suite.Suite) {
 
 	ctx, span := tracer.Start(p.T().Context(), "parent")
 
-	err = c.WithContext(ctx).RawQuery(query, 1).Exec()
+	err = c.WithContext(ctx).RawQuery(query, 2).Exec()
 	r.NoError(err)
 
 	span.End()
 
-	spans := recorder.Ended()
-	var found bool
-	for _, span := range spans {
-		if span.Name() == "parent" {
-			continue
-		}
-
-		for _, e := range expected {
-			if slices.ContainsFunc(span.Attributes(), func(a attribute.KeyValue) bool {
-				return string(a.Key) == "db.statement" && a.Value.AsString() == e
-			}) {
-				found = true
-				break
+	var foundStatement bool
+	for _, span := range recorder.Ended() {
+		for _, attr := range span.Attributes() {
+			if slices.ContainsFunc(expected, func(s string) bool { return attr.Key == "db.statement" && attr.Value.AsString() == s }) {
+				foundStatement = true
 			}
+			r.NotContains(attr.Value.AsString(), "2", "expected attributes to not contain query arguments")
 		}
 	}
-	r.True(found)
+	r.True(foundStatement, "expected to find db.statement attribute with query inside span")
 }
 
 func (s *PostgreSQLSuite) TestInstrumentationPostgreSQL() {
