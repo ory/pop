@@ -8,6 +8,16 @@ mysql:
   options:
     readTimeout: 5s
 
+tidb:
+  dialect: "tidb"
+  database: "pop_test"
+  host: '{{ envOr "TIDB_HOST" "127.0.0.1" }}'
+  port: '{{ envOr "TIDB_PORT" "4000" }}'
+  user: '{{ envOr "TIDB_USER"  "root" }}'
+  password: '{{ envOr "TIDB_PASSWORD"  "" }}'
+  options:
+    readTimeout: 10s
+
 postgres:
   url: '{{ envOr "POSTGRESQL_URL" "postgres://postgres:postgres%23@localhost:5433/pop_test?sslmode=disable" }}'
   pool: 25

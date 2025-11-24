@@ -1597,7 +1597,7 @@ func Test_UpdateQuery(t *testing.T) {
 		r.Equal(u1b.Bio.String, "must-not-change-1")
 		r.Equal(u2b.Bio.String, "must-not-change-2")
 		r.Equal(u3b.Bio.String, "must-not-change-3")
-		if tx.Dialect.Name() != nameMySQL { // MySQL timestamps are in seconds
+		if tx.Dialect.Name() != nameMySQL && tx.Dialect.Name() != nameMariaDB && tx.Dialect.Name() != nameTiDB { // MySQL/MariaDB/TiDB timestamps are in seconds
 			r.NotEqual(u1.UpdatedAt, u1b.UpdatedAt)
 			r.NotEqual(u2.UpdatedAt, u2b.UpdatedAt)
 		}
@@ -1606,8 +1606,8 @@ func Test_UpdateQuery(t *testing.T) {
 		// ID is ignored
 		count, err = tx.Where("true").UpdateQuery(&User{ID: 123, Name: nulls.NewString("Bar")}, "id", "name")
 		r.NoError(err)
-		if tx.Dialect.Name() == nameMySQL || tx.Dialect.Name() == nameMariaDB {
-			r.EqualValues(1, count) // on UPDATE, MySQL/MariaDB count only rows with changes, not all matched rows
+		if tx.Dialect.Name() == nameMySQL || tx.Dialect.Name() == nameMariaDB || tx.Dialect.Name() == nameTiDB {
+			r.EqualValues(1, count) // on UPDATE, MySQL/MariaDB/TiDB count only rows with changes, not all matched rows
 		} else {
 			r.EqualValues(3, count)
 		}

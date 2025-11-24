@@ -57,6 +57,50 @@ jobs:
         run: |
           go test -tags sqlite -race -cover ./...
 
+  tidb-tests:
+    name: TiDB tests - Go v${{ matrix.go-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version:
+          - "1.25"
+
+    services:
+      tidb:
+        image: pingcap/tidb:latest
+        ports:
+          - 4000:4000
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Go ${{ matrix.go }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Setup TiDB environment
+        run: |
+          mysqldump -u root --port 4000 --version
+          echo $HOME
+          echo -e "[mysqldump]\ncolumn-statistics=0" > $HOME/.my.cnf
+
+      - name: Build and run soda
+        env:
+          SODA_DIALECT: "tidb"
+          TIDB_PORT: 4000
+        run: |
+          go build -v -tags sqlite -o tsoda ./soda
+          ./tsoda drop -e $SODA_DIALECT -p ./testdata/migrations
+          ./tsoda create -e $SODA_DIALECT -p ./testdata/migrations
+          ./tsoda migrate -e $SODA_DIALECT -p ./testdata/migrations
+
+      - name: Test
+        env:
+          SODA_DIALECT: "tidb"
+          TIDB_PORT: 4000
+        run: |
+          go test -tags sqlite -race -cover ./...
+
   pg-tests:
     name: PostgreSQL tests - Go v${{ matrix.go-version }}
     runs-on: ubuntu-latest

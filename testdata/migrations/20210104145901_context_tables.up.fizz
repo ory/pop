@@ -10,7 +10,7 @@
     }
 {{ end }}
 
-{{ if eq .Dialect "mysql" }}
+{{ if or (eq .Dialect "mysql") (eq .Dialect "tidb") }}
     create_table("context_prefix_a_table") {
         t.Column("id", "string", { primary: true })
         t.Column("value", "string")

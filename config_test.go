@@ -13,7 +13,7 @@ func Test_LoadsConnectionsFromConfig(t *testing.T) {
 
 	r.NoError(LoadConfigFile())
 	if DialectSupported("sqlite3") {
-		r.Equal(5, len(Connections))
+		r.Equal(6, len(Connections))
 	} else {
 		r.Equal(4, len(Connections))
 	}

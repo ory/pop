@@ -24,6 +24,10 @@ type MySQLSuite struct {
 	suite.Suite
 }
 
+type TiDBSuite struct {
+	suite.Suite
+}
+
 type SQLiteSuite struct {
 	suite.Suite
 }
@@ -42,6 +46,8 @@ func TestSpecificSuites(t *testing.T) {
 		suite.Run(t, &SQLiteSuite{})
 	case "cockroach":
 		suite.Run(t, &CockroachSuite{})
+	case "tidb":
+		suite.Run(t, &TiDBSuite{})
 	}
 }
 
