@@ -239,7 +239,7 @@ func (c *Connection) WithContext(ctx context.Context) *Connection {
 	return cn
 }
 
-// WithContext returns a copy of the connection, wrapped with a context.
+// WithNowFuncContext returns a copy of the connection, wrapped with a context containing the custom `nowFunc`.
 func (c *Connection) WithNowFuncContext(ctx context.Context, nowFunc func() time.Time) *Connection {
 	cn := c.copy()
 	cn.Store = contextStore{
