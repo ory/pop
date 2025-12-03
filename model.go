@@ -27,6 +27,7 @@ func ensureCallerInCallStack(expectedCaller string) {
 		if !ok {
 			break
 		}
+		println(frame.Func.Name())
 		if frame.Func.Name() == expectedCaller {
 			return
 		}
