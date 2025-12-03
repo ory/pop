@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,8 +17,36 @@ import (
 
 var nowFunc = time.Now
 
+func ensuredCalledInsideInit() {
+	// If the call stack is deeper than 1024... we got bigger problems.
+	callers := [1024]uintptr{}
+	callersCount := runtime.Callers(0, callers[:])
+	frames := runtime.CallersFrames(callers[:callersCount])
+
+	// The `init()` function gets compiled to `path/to/pkg.init.0` where
+	// the final number varies.
+	re := regexp.MustCompile(`\.init\.\d+$`)
+
+	for {
+		frame, ok := frames.Next()
+		if !ok {
+			break
+		}
+		if re.Match([]byte(frame.Func.Name())) {
+			return
+		}
+	}
+
+	panic("caller init() not found in call stack, reached end of call stack")
+}
+
 // SetNowFunc allows an override of time.Now for customizing CreatedAt/UpdatedAt
 func SetNowFunc(f func() time.Time) {
+	// From the Go spec:
+	// > the invocation of init functions—happens in a single goroutine, sequentially, one package at a time
+	// Since this function mutates a global variable, it should only be called inside `init()`.
+	ensuredCalledInsideInit()
+
 	nowFunc = f
 }
 
