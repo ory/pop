@@ -16,6 +16,10 @@ import (
 var nowFunc = time.Now
 
 // SetNowFunc allows an override of time.Now for customizing CreatedAt/UpdatedAt
+// NOTE: This function is *not* thread-safe!
+// Even if it was, it should only be called inside `init()` functions, otherwise
+// different goroutines will override concurrently the time function and this will yield to
+// undeterministic timestamps!
 func SetNowFunc(f func() time.Time) {
 	nowFunc = f
 }
