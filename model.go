@@ -37,6 +37,9 @@ func ensureCallerInCallStack(expectedCaller string) {
 
 // SetNowFunc allows an override of time.Now for customizing CreatedAt/UpdatedAt
 func SetNowFunc(f func() time.Time) {
+	// From the Go spec:
+	// > the invocation of init functions—happens in a single goroutine, sequentially, one package at a time
+	// Since this function mutates a global variable, it should only be called inside `init()`.
 	ensureCallerInCallStack("init")
 
 	nowFunc = f
