@@ -38,19 +38,23 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 				)),
 		}
 	)
-	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
-	if c.Details().AllowMinPool && strings.Contains(dsn, "pool_min_conns=") && (CanonicalDialect(driver) == nameCockroach || CanonicalDialect(driver) == namePostgreSQL) {
-		if CanonicalDialect(driver) == namePostgreSQL {
-			u, err := url.Parse(dsn)
-			if err != nil {
-				return nil, nil, errors.WithStack(err)
-			}
-			q := u.Query()
-			q.Del("pool_min_conns")
-			u.RawQuery = q.Encode()
 
-			dsn = u.String()
+	hasPoolParam := strings.Contains(dsn, "pool_min_conns=")
+	withPool := c.Details().AllowMinPool && hasPoolParam && (CanonicalDialect(driver) == nameCockroach || CanonicalDialect(driver) == namePostgreSQL)
+	if CanonicalDialect(driver) == namePostgreSQL && hasPoolParam {
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return nil, nil, errors.WithStack(err)
 		}
+		q := u.Query()
+		q.Del("pool_min_conns")
+		u.RawQuery = q.Encode()
+
+		dsn = u.String()
+	}
+
+	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
+	if withPool {
 		pool, err := pgxpool.New(ctx, dsn)
 		if err != nil {
 			return nil, nil, err
