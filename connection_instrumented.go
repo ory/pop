@@ -41,6 +41,9 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 
 	hasPoolParam := strings.Contains(dsn, "pool_min_conns=")
 	withPool := c.Details().AllowMinPool && hasPoolParam && (CanonicalDialect(driver) == nameCockroach || CanonicalDialect(driver) == namePostgreSQL)
+
+	// In the case of Postgres: the parameter `pool_min_conns` is rejected by the server,
+	// so we have to strip it away.
 	if CanonicalDialect(driver) == namePostgreSQL && hasPoolParam {
 		u, err := url.Parse(dsn)
 		if err != nil {
