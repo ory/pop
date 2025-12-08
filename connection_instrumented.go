@@ -43,7 +43,7 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 		if err != nil {
 			return nil, nil, err
 		}
-		fmt.Fprintf(os.Stderr, "[D001] before=%s after=%s\n", dsn, pool.Config().ConnString())
+		fmt.Fprintf(os.Stderr, "[D001] before=%s after=%s conf=%+v\n", dsn, pool.Config().ConnString(), pool.Config().ConnConfig.Config.RuntimeParams)
 
 		con := otelsql.OpenDB(pgxstdlib.GetPoolConnector(pool), append(otelopts, otelsql.WithSpanOptions(otelsql.SpanOptions{
 			Ping:                 false,
