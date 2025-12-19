@@ -1,12 +1,15 @@
 package pop
 
 import (
+	"cmp"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
+
 	"github.com/ory/pop/v6/columns"
 	"github.com/ory/pop/v6/logging"
 )
@@ -137,11 +140,11 @@ func (sq *sqlBuilder) buildDeleteSQL() string {
 	//
 	// not generic enough IMO, therefore excluded
 	//
-	//switch sq.Query.Connection.Dialect.Name() {
-	//case nameMySQL, nameSQLite3:
+	// switch sq.Query.Connection.Dialect.Name() {
+	// case nameMySQL, nameSQLite3:
 	//	sql = sq.buildOrderClauses(sql)
 	//	sql = sq.buildPaginationClauses(sql)
-	//}
+	// }
 
 	return sql
 }
@@ -243,22 +246,48 @@ func (sq *sqlBuilder) buildPaginationClauses(sql string) string {
 var columnCache = map[string]columns.Columns{}
 var columnCacheMutex = sync.RWMutex{}
 
+func cacheKey(val any) (string, bool) {
+	if val == nil {
+		return "", false
+	}
+	ty := reflect.TypeOf(val)
+	for ty.Kind() == reflect.Pointer ||
+		ty.Kind() == reflect.Slice ||
+		ty.Kind() == reflect.Array {
+		ty = ty.Elem()
+	}
+	if ty.Kind() != reflect.Struct {
+		return "", false
+	}
+
+	return cmp.Or(ty.PkgPath(), "builtin") + "." + ty.Name(), true
+}
+
 func (sq *sqlBuilder) buildColumns() columns.Columns {
 	tableName := sq.Model.TableName()
 	asName := sq.Model.Alias()
 	acl := len(sq.AddColumns)
 	if acl == 0 {
-		columnCacheMutex.RLock()
-		cols, ok := columnCache[tableName]
-		columnCacheMutex.RUnlock()
-		// if alias is the same, don't remake columns
-		if ok && cols.TableAlias == asName {
-			return cols
+		key, shouldCache := cacheKey(sq.Model.Value)
+
+		if shouldCache {
+			columnCacheMutex.RLock()
+			cols, ok := columnCache[key]
+			columnCacheMutex.RUnlock()
+
+			// if alias is the same, don't remake columns
+			if ok && cols.TableAlias == asName {
+				return cols
+			}
 		}
-		cols = columns.ForStructWithAlias(sq.Model.Value, tableName, asName, sq.Model.IDField())
-		columnCacheMutex.Lock()
-		columnCache[tableName] = cols
-		columnCacheMutex.Unlock()
+		cols := columns.ForStructWithAlias(sq.Model.Value, tableName, asName, sq.Model.IDField())
+
+		if shouldCache {
+			columnCacheMutex.Lock()
+			columnCache[key] = cols
+			columnCacheMutex.Unlock()
+		}
+
 		return cols
 	}
 
