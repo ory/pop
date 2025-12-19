@@ -246,9 +246,9 @@ func (sq *sqlBuilder) buildPaginationClauses(sql string) string {
 var columnCache = map[string]columns.Columns{}
 var columnCacheMutex = sync.RWMutex{}
 
-func cacheKey(val any) string {
+func cacheKey(val any) (string, bool) {
 	if val == nil {
-		return "builtin.nil"
+		return "", false
 	}
 	ty := reflect.TypeOf(val)
 	for ty.Kind() == reflect.Pointer ||
@@ -256,11 +256,11 @@ func cacheKey(val any) string {
 		ty.Kind() == reflect.Array {
 		ty = ty.Elem()
 	}
-	if ty.Kind() == reflect.Map {
-		return "builtin.map"
+	if ty.Kind() != reflect.Struct {
+		return "", false
 	}
 
-	return cmp.Or(ty.PkgPath(), "builtin") + "." + ty.Name()
+	return cmp.Or(ty.PkgPath(), "builtin") + "." + ty.Name(), true
 }
 
 func (sq *sqlBuilder) buildColumns() columns.Columns {
@@ -268,19 +268,26 @@ func (sq *sqlBuilder) buildColumns() columns.Columns {
 	asName := sq.Model.Alias()
 	acl := len(sq.AddColumns)
 	if acl == 0 {
-		key := cacheKey(sq.Model.Value)
+		key, shouldCache := cacheKey(sq.Model.Value)
 
-		columnCacheMutex.RLock()
-		cols, ok := columnCache[key]
-		columnCacheMutex.RUnlock()
-		// if alias is the same, don't remake columns
-		if ok && cols.TableAlias == asName {
-			return cols
+		if shouldCache {
+			columnCacheMutex.RLock()
+			cols, ok := columnCache[key]
+			columnCacheMutex.RUnlock()
+
+			// if alias is the same, don't remake columns
+			if ok && cols.TableAlias == asName {
+				return cols
+			}
 		}
-		cols = columns.ForStructWithAlias(sq.Model.Value, tableName, asName, sq.Model.IDField())
-		columnCacheMutex.Lock()
-		columnCache[key] = cols
-		columnCacheMutex.Unlock()
+		cols := columns.ForStructWithAlias(sq.Model.Value, tableName, asName, sq.Model.IDField())
+
+		if shouldCache {
+			columnCacheMutex.Lock()
+			columnCache[key] = cols
+			columnCacheMutex.Unlock()
+		}
+
 		return cols
 	}
 
