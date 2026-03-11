@@ -22,11 +22,11 @@ import (
 	"github.com/ory/pop/v6/logging"
 )
 
-const nameSQLite3 = "sqlite3"
+const nameSQLite3 = "sqlite"
 
 func init() {
 	AvailableDialects = append(AvailableDialects, nameSQLite3)
-	dialectSynonyms["sqlite"] = nameSQLite3
+	dialectSynonyms["sqlite3"] = nameSQLite3
 	urlParser[nameSQLite3] = urlParserSQLite3
 	newConnection[nameSQLite3] = newSQLite
 	finalizer[nameSQLite3] = finalizerSQLite
