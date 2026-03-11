@@ -4,5 +4,5 @@
 package pop
 
 import (
-	_ "github.com/mattn/go-sqlite3" // Load SQLite3 CGo driver
+	_ "modernc.org/sqlite" // Load SQLite3 driver
 )
