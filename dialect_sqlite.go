@@ -283,7 +283,7 @@ func newSQLite(deets *ConnectionDetails) (dialect, error) {
 	if err != nil {
 		return nil, err
 	}
-	deets.URL = fmt.Sprintf("sqlite3://%s", deets.Database)
+	deets.URL = fmt.Sprintf("sqlite://%s", deets.Database)
 	cd := &sqlite{
 		gil:           &sync.Mutex{},
 		smGil:         &sync.Mutex{},
