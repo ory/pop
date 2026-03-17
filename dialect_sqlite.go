@@ -317,28 +317,78 @@ func urlParserSQLite3(cd *ConnectionDetails) error {
 }
 
 func finalizerSQLite(cd *ConnectionDetails) {
-	defs := map[string]string{
-		"_busy_timeout": "5000",
-	}
-	forced := map[string]string{
-		"_fk": "true",
+	// modernc.org/sqlite (registered as "sqlite3") requires pragmas via
+	// _pragma=name(value) DSN params. Legacy mattn-style params (_fk,
+	// _journal_mode, _busy_timeout) are silently ignored and must be translated.
+
+	// Build url.Values from RawOptions (set when a DSN URL was parsed) or the
+	// Options map (set programmatically). url.Values supports duplicate keys,
+	// which is required for multiple _pragma entries.
+	var q url.Values
+	if cd.RawOptions != "" {
+		var err error
+		q, err = url.ParseQuery(cd.RawOptions)
+		if err != nil {
+			q = url.Values{}
+		}
+	} else {
+		q = url.Values{}
+		popInternal := map[string]bool{
+			"migration_table_name": true,
+			"retry_sleep":          true,
+			"retry_limit":          true,
+			"lock":                 true,
+		}
+		for k, v := range cd.Options {
+			if !popInternal[k] {
+				q.Set(k, v)
+			}
+		}
 	}
 
-	for k, def := range defs {
-		cd.setOptionWithDefault(k, cd.option(k), def)
+	// Translate legacy mattn-style params to _pragma equivalents.
+	for _, t := range []struct{ key, pragma string }{
+		{"_fk", "foreign_keys"},
+		{"_journal_mode", "journal_mode"},
+		{"_busy_timeout", "busy_timeout"},
+	} {
+		if val := q.Get(t.key); val != "" {
+			q.Del(t.key)
+			if !sqlitePragmaSet(q, t.pragma) {
+				q.Add("_pragma", t.pragma+"("+val+")")
+			}
+		}
 	}
 
-	for k, v := range forced {
-		// respect user specified options but print warning!
-		cd.setOptionWithDefault(k, cd.option(k), v)
-		if cd.option(k) != v { // when user-defined option exists
-			log(logging.Warn, "IMPORTANT! '%s: %s' option is required to work properly but your current setting is '%v: %v'.", k, v, k, cd.option(k))
-			log(logging.Warn, "It is highly recommended to remove '%v: %v' option from your config!", k, cd.option(k))
-		} // or override with `cd.Options[k] = v`?
-		if cd.URL != "" && !strings.Contains(cd.URL, k+"="+v) {
-			log(logging.Warn, "IMPORTANT! '%s=%s' option is required to work properly. Please add it to the database URL in the config!", k, v)
-		} // or fix user specified url?
+	// Apply default busy_timeout if not configured.
+	if !sqlitePragmaSet(q, "busy_timeout") {
+		q.Add("_pragma", "busy_timeout(5000)")
 	}
+	// Enforce foreign_keys.
+	if !sqlitePragmaSet(q, "foreign_keys") {
+		q.Add("_pragma", "foreign_keys(1)")
+		if cd.URL != "" {
+			log(logging.Warn, "IMPORTANT! '_pragma=foreign_keys(1)' is required for correct operation. Add it to your SQLite DSN.")
+		}
+	}
+	// Use the sqlite time format for correct time round-tripping with modernc.
+	if q.Get("_time_format") == "" {
+		q.Set("_time_format", "sqlite")
+	}
+
+	cd.RawOptions = q.Encode()
+}
+
+// sqlitePragmaSet reports whether q already contains a _pragma entry whose
+// name starts with pragmaName (case-insensitive).
+func sqlitePragmaSet(q url.Values, pragmaName string) bool {
+	prefix := strings.ToLower(pragmaName)
+	for _, p := range q["_pragma"] {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(p)), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func newSQLiteDriver() (driver.Driver, error) {
