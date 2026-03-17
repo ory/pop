@@ -4,5 +4,11 @@
 package pop
 
 import (
-	_ "github.com/mattn/go-sqlite3" // Load SQLite3 CGo driver
+	"database/sql"
+
+	moderncsqlite "modernc.org/sqlite" // Load SQLite3 pure-Go driver
 )
+
+func init() {
+	sql.Register("sqlite3", &moderncsqlite.Driver{})
+}
