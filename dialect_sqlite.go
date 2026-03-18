@@ -371,11 +371,6 @@ func finalizerSQLite(cd *ConnectionDetails) {
 			log(logging.Warn, "IMPORTANT! '_pragma=foreign_keys(1)' is required for correct operation. Add it to your SQLite DSN.")
 		}
 	}
-	// Use the sqlite time format for correct time round-tripping with modernc.
-	if q.Get("_time_format") == "" {
-		q.Set("_time_format", "sqlite")
-	}
-
 	cd.RawOptions = q.Encode()
 }
 
