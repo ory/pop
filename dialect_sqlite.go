@@ -372,6 +372,9 @@ func finalizerSQLite(cd *ConnectionDetails) {
 		}
 	}
 	cd.RawOptions = q.Encode()
+	// Reflect applied defaults back into Options (legacy keys) for backward compatibility.
+	cd.setOptionWithDefault("_busy_timeout", cd.option("_busy_timeout"), "5000")
+	cd.setOptionWithDefault("_fk", cd.option("_fk"), "true")
 }
 
 // sqlitePragmaSet reports whether q already contains a _pragma entry whose
