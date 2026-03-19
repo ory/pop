@@ -315,6 +315,31 @@ func Test_normalizeTimesToUTC(t *testing.T) {
 			normalizeTimesToUTC((*struct{ T time.Time })(nil))
 		})
 	})
+
+	t.Run("*time.Time field normalized", func(t *testing.T) {
+		type row struct{ T *time.Time }
+		r := &row{T: &fixedNow}
+		normalizeTimesToUTC(r)
+		require.NotNil(t, r.T)
+		require.Equal(t, time.UTC, r.T.Location())
+		require.True(t, utcNow.Equal(*r.T))
+	})
+
+	t.Run("nil *time.Time field not panicking", func(t *testing.T) {
+		type row struct{ T *time.Time }
+		r := &row{T: nil}
+		require.NotPanics(t, func() { normalizeTimesToUTC(r) })
+		require.Nil(t, r.T)
+	})
+
+	t.Run("pointer-to-struct with time fields", func(t *testing.T) {
+		type Inner struct{ CreatedAt time.Time }
+		type outer struct{ Details *Inner }
+		r := &outer{Details: &Inner{CreatedAt: fixedNow}}
+		normalizeTimesToUTC(r)
+		require.Equal(t, time.UTC, r.Details.CreatedAt.Location())
+		require.True(t, utcNow.Equal(r.Details.CreatedAt))
+	})
 }
 
 // parsePragmas returns the _pragma slice from cd.RawOptions.

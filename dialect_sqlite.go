@@ -354,13 +354,6 @@ var legacySQLiteParams = []struct{ key, pragma string }{
 	{"_writable_schema", "writable_schema"},
 }
 
-// sqliteOptionKey maps pragma names back to the cd.Options key used when
-// echoing applied pragmas. Entries here override the default "_"+pragmaName
-// convention, preserving mattn backward-compat short aliases.
-var sqliteOptionKey = map[string]string{
-	"foreign_keys": "_fk",
-}
-
 // sqliteInternalKeys are pop-internal connection options that must not be
 // forwarded to the SQLite DSN.
 var sqliteInternalKeys = map[string]bool{
@@ -416,11 +409,11 @@ func finalizerSQLite(cd *ConnectionDetails) {
 	}
 
 	// Translate all legacy mattn-style params to _pragma=name(value).
-	for _, t := range legacySQLiteParams {
-		if val := q.Get(t.key); val != "" {
-			q.Del(t.key)
-			if !sqlitePragmaSet(q, t.pragma) {
-				q.Add("_pragma", t.pragma+"("+val+")")
+	for _, p := range legacySQLiteParams {
+		if val := q.Get(p.key); val != "" {
+			q.Del(p.key)
+			if !sqlitePragmaSet(q, p.pragma) {
+				q.Add("_pragma", p.pragma+"("+val+")")
 			}
 		}
 	}
@@ -457,9 +450,9 @@ func finalizerSQLite(cd *ConnectionDetails) {
 		}
 		name := strings.ToLower(strings.TrimSpace(rawName))
 		value := strings.TrimSuffix(strings.TrimSpace(rawValue), ")")
-		key, ok := sqliteOptionKey[name]
-		if !ok {
-			key = "_" + name
+		key := "_" + name
+		if name == "foreign_keys" {
+			key = "_fk"
 		}
 		cd.setOption(key, value)
 	}
@@ -480,29 +473,32 @@ func sqlitePragmaSet(q url.Values, pragmaName string) bool {
 }
 
 var (
-	typeTime     = reflect.TypeOf(time.Time{})
-	typeNullTime = reflect.TypeOf(sql.NullTime{})
+	typeTime     = reflect.TypeFor[time.Time]()
+	typeNullTime = reflect.TypeFor[sql.NullTime]()
 )
 
 // normalizeTimesToUTC walks v (a pointer to a struct or pointer to a slice of
 // structs) and calls .UTC() on every time.Time and valid sql.NullTime field,
-// including those inside embedded structs.
+// including those inside embedded structs and behind pointer fields.
 // This is required because modernc.org/sqlite may return time.Time values
 // whose Location pointer is not time.UTC even when the stored instant is UTC
 // (e.g. unnamed FixedZone("", 0) from rows written by mattn/go-sqlite3).
-func normalizeTimesToUTC(v interface{}) {
-	normalizeValue(reflect.Indirect(reflect.ValueOf(v)))
+func normalizeTimesToUTC(v any) {
+	normalizeValue(reflect.ValueOf(v))
 }
 
 func normalizeValue(rv reflect.Value) {
+	// Dereference any pointer indirection (handles nil safely).
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return
+		}
+		rv = rv.Elem()
+	}
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		for i := range rv.Len() {
-			elem := rv.Index(i)
-			if elem.Kind() == reflect.Pointer {
-				elem = elem.Elem()
-			}
-			normalizeValue(elem)
+			normalizeValue(rv.Index(i))
 		}
 	case reflect.Struct:
 		for i := range rv.NumField() {
@@ -510,19 +506,26 @@ func normalizeValue(rv reflect.Value) {
 			if !f.CanSet() {
 				continue
 			}
-			switch f.Type() {
+			// Dereference one pointer level so *time.Time and *Struct are
+			// handled the same as their value equivalents.
+			target := f
+			if target.Kind() == reflect.Pointer {
+				if target.IsNil() {
+					continue
+				}
+				target = target.Elem()
+			}
+			switch target.Type() {
 			case typeTime:
-				f.Set(reflect.ValueOf(f.Interface().(time.Time).UTC()))
+				target.Set(reflect.ValueOf(target.Interface().(time.Time).UTC()))
 			case typeNullTime:
-				nt := f.Interface().(sql.NullTime)
+				nt := target.Interface().(sql.NullTime)
 				if nt.Valid {
 					nt.Time = nt.Time.UTC()
-					f.Set(reflect.ValueOf(nt))
+					target.Set(reflect.ValueOf(nt))
 				}
 			default:
-				if f.Kind() == reflect.Struct {
-					normalizeValue(f)
-				}
+				normalizeValue(target)
 			}
 		}
 	}
