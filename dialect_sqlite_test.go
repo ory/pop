@@ -1,10 +1,12 @@
 package pop
 
 import (
+	"database/sql"
 	"fmt"
 	"net/url"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +36,7 @@ func Test_ConnectionDetails_Finalize_SQLite_OverrideOptions_URL_Only(t *testing.
 	r.NoError(err)
 	r.Equal("sqlite3", cd.Dialect, "given dialect: N/A")
 	r.Equal("/tmp/foo.db", cd.Database, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
-	r.EqualValues(map[string]string{"_fk": "false", "foo": "bar", "_busy_timeout": "5000"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
+	r.EqualValues(map[string]string{"_fk": "false", "_busy_timeout": "5000"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
 }
 
 func Test_ConnectionDetails_Finalize_SQLite_SynURL_Only(t *testing.T) {
@@ -125,7 +127,7 @@ func Test_ConnectionDetails_Finalize_SQLite_OverrideOptions_Synonym_Path(t *test
 	r.NoError(err)
 	r.Equal("sqlite3", cd.Dialect, "given dialect: N/A")
 	r.Equal("/tmp/foo.db", cd.Database, "given url: sqlite3:///tmp/foo.db")
-	r.EqualValues(map[string]string{"_fk": "false", "foo": "bar", "_busy_timeout": "5000"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
+	r.EqualValues(map[string]string{"_fk": "false", "_busy_timeout": "5000"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
 }
 
 func Test_ConnectionDetails_FinalizeOSPath(t *testing.T) {
@@ -221,6 +223,100 @@ func TestSqlite_NewDriver(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_normalizeTimesToUTC(t *testing.T) {
+	fixedZone := time.FixedZone("", 0) // unnamed zero-offset zone, distinct from time.UTC
+	local := time.Local
+
+	now := time.Now().Truncate(time.Second)
+	utcNow := now.UTC()
+	fixedNow := now.In(fixedZone)
+	localNow := now.In(local)
+
+	t.Run("time.Time fields normalized", func(t *testing.T) {
+		type row struct {
+			T time.Time
+		}
+		for _, input := range []time.Time{fixedNow, localNow, utcNow} {
+			r := &row{T: input}
+			normalizeTimesToUTC(r)
+			require.Equal(t, time.UTC, r.T.Location(), "Location must be time.UTC")
+			require.True(t, utcNow.Equal(r.T), "instant must be preserved")
+		}
+	})
+
+	t.Run("sql.NullTime valid normalized", func(t *testing.T) {
+		type row struct {
+			NT sql.NullTime
+		}
+		r := &row{NT: sql.NullTime{Time: fixedNow, Valid: true}}
+		normalizeTimesToUTC(r)
+		require.Equal(t, time.UTC, r.NT.Time.Location())
+		require.True(t, utcNow.Equal(r.NT.Time))
+		require.True(t, r.NT.Valid)
+	})
+
+	t.Run("sql.NullTime invalid untouched", func(t *testing.T) {
+		type row struct {
+			NT sql.NullTime
+		}
+		r := &row{NT: sql.NullTime{Valid: false}}
+		normalizeTimesToUTC(r)
+		require.False(t, r.NT.Valid)
+		require.True(t, r.NT.Time.IsZero())
+	})
+
+	t.Run("embedded struct fields normalized", func(t *testing.T) {
+		// Exported embedded types (e.g. pop.Model, pop.Timestamps) are the
+		// real-world case; reflection's CanSet() returns false for unexported
+		// embedded fields so they cannot be walked.
+		type Inner struct{ CreatedAt time.Time }
+		type outer struct {
+			Inner
+			UpdatedAt time.Time
+		}
+		r := &outer{
+			Inner:     Inner{CreatedAt: fixedNow},
+			UpdatedAt: localNow,
+		}
+		normalizeTimesToUTC(r)
+		require.Equal(t, time.UTC, r.CreatedAt.Location())
+		require.Equal(t, time.UTC, r.UpdatedAt.Location())
+	})
+
+	t.Run("slice of structs normalized", func(t *testing.T) {
+		type row struct{ T time.Time }
+		rows := []row{{fixedNow}, {localNow}, {utcNow}}
+		normalizeTimesToUTC(&rows)
+		for _, r := range rows {
+			require.Equal(t, time.UTC, r.T.Location())
+			require.True(t, utcNow.Equal(r.T))
+		}
+	})
+
+	t.Run("slice of pointer-to-struct normalized", func(t *testing.T) {
+		type row struct{ T time.Time }
+		rows := []*row{{fixedNow}, {localNow}}
+		normalizeTimesToUTC(&rows)
+		for _, r := range rows {
+			require.Equal(t, time.UTC, r.T.Location())
+		}
+	})
+
+	t.Run("already UTC unchanged", func(t *testing.T) {
+		type row struct{ T time.Time }
+		r := &row{T: utcNow}
+		normalizeTimesToUTC(r)
+		require.Equal(t, time.UTC, r.T.Location())
+		require.True(t, utcNow.Equal(r.T))
+	})
+
+	t.Run("nil pointer no panic", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			normalizeTimesToUTC((*struct{ T time.Time })(nil))
+		})
+	})
+}
+
 // parsePragmas returns the _pragma slice from cd.RawOptions.
 func parsePragmas(t *testing.T, cd *ConnectionDetails) []string {
 	t.Helper()
@@ -272,7 +368,7 @@ func Test_ConnectionDetails_Finalize_SQLite_RawOptions_Defaults(t *testing.T) {
 }
 
 // Test_ConnectionDetails_Finalize_SQLite_RawOptions_Override asserts that
-// explicit legacy params translate correctly and pass-through params survive.
+// explicit legacy params translate correctly and unsupported params are stripped.
 func Test_ConnectionDetails_Finalize_SQLite_RawOptions_Override(t *testing.T) {
 	cd := &ConnectionDetails{URL: "sqlite3:///tmp/foo.db?_fk=false&foo=bar"}
 	require.NoError(t, cd.Finalize())
@@ -283,7 +379,7 @@ func Test_ConnectionDetails_Finalize_SQLite_RawOptions_Override(t *testing.T) {
 	require.Contains(t, pragmas, "busy_timeout(5000)")
 
 	q, _ := url.ParseQuery(cd.RawOptions)
-	require.Equal(t, "bar", q.Get("foo"))
+	require.NotContains(t, q, "foo", "unsupported params must be stripped")
 	require.NotContains(t, q, "_fk")
 
 	require.Equal(t, "false", cd.Options["_fk"])

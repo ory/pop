@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -149,6 +150,7 @@ func (m *sqlite) SelectOne(c *Connection, model *Model, query Query) error {
 		if err := genericSelectOne(c, model, query); err != nil {
 			return fmt.Errorf("sqlite select one: %w", err)
 		}
+		normalizeTimesToUTC(model.Value)
 		return nil
 	})
 }
@@ -158,6 +160,7 @@ func (m *sqlite) SelectMany(c *Connection, models *Model, query Query) error {
 		if err := genericSelectMany(c, models, query); err != nil {
 			return fmt.Errorf("sqlite select many: %w", err)
 		}
+		normalizeTimesToUTC(models.Value)
 		return nil
 	})
 }
@@ -358,6 +361,29 @@ var sqliteOptionKey = map[string]string{
 	"foreign_keys": "_fk",
 }
 
+// sqliteInternalKeys are pop-internal connection options that must not be
+// forwarded to the SQLite DSN.
+var sqliteInternalKeys = map[string]bool{
+	"migration_table_name": true,
+	"retry_sleep":          true,
+	"retry_limit":          true,
+	"lock":                 true,
+}
+
+// moderncSQLiteParams is the complete set of DSN query parameters recognised
+// by modernc.org/sqlite. Any key not in this set will be warned and stripped.
+// Source: modernc.org/sqlite@v1.47.0/sqlite.go applyQueryParams() and
+// modernc.org/sqlite@v1.47.0/conn.go newConn().
+var moderncSQLiteParams = map[string]bool{
+	"vfs":                  true, // VFS name
+	"_pragma":              true, // PRAGMA name(value); repeatable
+	"_time_format":         true, // time write format; only "sqlite" is valid
+	"_txlock":              true, // transaction locking: deferred/immediate/exclusive
+	"_time_integer_format": true, // integer time repr: unix/unix_milli/unix_micro/unix_nano
+	"_inttotime":           true, // convert integer columns to time.Time
+	"_texttotime":          true, // affect ColumnTypeScanType for TEXT date columns
+}
+
 func finalizerSQLite(cd *ConnectionDetails) {
 	// modernc.org/sqlite (registered as "sqlite3") requires pragmas via
 	// _pragma=name(value) DSN params. Legacy mattn-style params are silently
@@ -375,26 +401,18 @@ func finalizerSQLite(cd *ConnectionDetails) {
 		}
 	} else {
 		q = url.Values{}
-		popInternal := map[string]bool{
-			"migration_table_name": true,
-			"retry_sleep":          true,
-			"retry_limit":          true,
-			"lock":                 true,
-		}
 		for k, v := range cd.Options {
-			if !popInternal[k] {
+			if !sqliteInternalKeys[k] {
 				q.Set(k, v)
 			}
 		}
 	}
 
-	// _loc/_tz/_timezone are mattn-only timezone params with no modernc equivalent.
+	// _loc is a mattn-only timezone param with no modernc equivalent.
 	// modernc returns time.UTC natively; use _time_format if a different format is needed.
-	for _, k := range []string{"_loc", "tz", "timezone"} {
-		if q.Get(k) != "" {
-			log(logging.Warn, "SQLite DSN param %q has no modernc.org/sqlite equivalent and will be ignored", k)
-			q.Del(k)
-		}
+	if q.Get("_loc") != "" {
+		log(logging.Warn, "SQLite DSN param \"_loc\" has no modernc.org/sqlite equivalent and will be ignored")
+		q.Del("_loc")
 	}
 
 	// Translate all legacy mattn-style params to _pragma=name(value).
@@ -404,6 +422,15 @@ func finalizerSQLite(cd *ConnectionDetails) {
 			if !sqlitePragmaSet(q, t.pragma) {
 				q.Add("_pragma", t.pragma+"("+val+")")
 			}
+		}
+	}
+
+	// Strip any remaining keys that modernc.org/sqlite does not recognise.
+	for k := range q {
+		if !moderncSQLiteParams[k] {
+			log(logging.Warn, "SQLite DSN param %q is not supported by modernc.org/sqlite and will be ignored", k)
+			q.Del(k)
+			delete(cd.Options, k)
 		}
 	}
 
@@ -429,7 +456,7 @@ func finalizerSQLite(cd *ConnectionDetails) {
 			continue
 		}
 		name := strings.ToLower(strings.TrimSpace(rawName))
-		value := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rawValue), ")"))
+		value := strings.TrimSuffix(strings.TrimSpace(rawValue), ")")
 		key, ok := sqliteOptionKey[name]
 		if !ok {
 			key = "_" + name
@@ -450,6 +477,55 @@ func sqlitePragmaSet(q url.Values, pragmaName string) bool {
 		}
 	}
 	return false
+}
+
+var (
+	typeTime     = reflect.TypeOf(time.Time{})
+	typeNullTime = reflect.TypeOf(sql.NullTime{})
+)
+
+// normalizeTimesToUTC walks v (a pointer to a struct or pointer to a slice of
+// structs) and calls .UTC() on every time.Time and valid sql.NullTime field,
+// including those inside embedded structs.
+// This is required because modernc.org/sqlite may return time.Time values
+// whose Location pointer is not time.UTC even when the stored instant is UTC
+// (e.g. unnamed FixedZone("", 0) from rows written by mattn/go-sqlite3).
+func normalizeTimesToUTC(v interface{}) {
+	normalizeValue(reflect.Indirect(reflect.ValueOf(v)))
+}
+
+func normalizeValue(rv reflect.Value) {
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := range rv.Len() {
+			elem := rv.Index(i)
+			if elem.Kind() == reflect.Pointer {
+				elem = elem.Elem()
+			}
+			normalizeValue(elem)
+		}
+	case reflect.Struct:
+		for i := range rv.NumField() {
+			f := rv.Field(i)
+			if !f.CanSet() {
+				continue
+			}
+			switch f.Type() {
+			case typeTime:
+				f.Set(reflect.ValueOf(f.Interface().(time.Time).UTC()))
+			case typeNullTime:
+				nt := f.Interface().(sql.NullTime)
+				if nt.Valid {
+					nt.Time = nt.Time.UTC()
+					f.Set(reflect.ValueOf(nt))
+				}
+			default:
+				if f.Kind() == reflect.Struct {
+					normalizeValue(f)
+				}
+			}
+		}
+	}
 }
 
 func newSQLiteDriver() (driver.Driver, error) {
