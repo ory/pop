@@ -304,6 +304,11 @@ func urlParserSQLite3(cd *ConnectionDetails) error {
 		return nil
 	}
 
+	// Preserve the raw query string so finalizerSQLite can parse multi-value
+	// params (e.g. multiple _pragma entries) via url.Values, which supports
+	// duplicate keys. The generic withURL path sets RawOptions the same way.
+	cd.RawOptions = dbparts[1]
+
 	q, err := url.ParseQuery(dbparts[1])
 	if err != nil {
 		return fmt.Errorf("unable to parse sqlite query: %w", err)
@@ -316,10 +321,47 @@ func urlParserSQLite3(cd *ConnectionDetails) error {
 	return nil
 }
 
+// legacySQLiteParams maps mattn-style DSN params to SQLite pragma names for
+// modernc.org/sqlite, which requires _pragma=name(value) syntax. Aliases
+// (e.g. _foreign_keys/_fk) list the canonical long form first so the first
+// match wins when both aliases are present in the same DSN.
+var legacySQLiteParams = []struct{ key, pragma string }{
+	{"_foreign_keys", "foreign_keys"},
+	{"_fk", "foreign_keys"},
+	{"_journal_mode", "journal_mode"},
+	{"_journal", "journal_mode"},
+	{"_busy_timeout", "busy_timeout"},
+	{"_timeout", "busy_timeout"},
+	{"_synchronous", "synchronous"},
+	{"_sync", "synchronous"},
+	{"_auto_vacuum", "auto_vacuum"},
+	{"_vacuum", "auto_vacuum"},
+	{"_case_sensitive_like", "case_sensitive_like"},
+	{"_cslike", "case_sensitive_like"},
+	{"_defer_foreign_keys", "defer_foreign_keys"},
+	{"_defer_fk", "defer_foreign_keys"},
+	{"_locking_mode", "locking_mode"},
+	{"_locking", "locking_mode"},
+	{"_recursive_triggers", "recursive_triggers"},
+	{"_rt", "recursive_triggers"},
+	{"_cache_size", "cache_size"},
+	{"_ignore_check_constraints", "ignore_check_constraints"},
+	{"_query_only", "query_only"},
+	{"_secure_delete", "secure_delete"},
+	{"_writable_schema", "writable_schema"},
+}
+
+// sqliteOptionKey maps pragma names back to the cd.Options key used when
+// echoing applied pragmas. Entries here override the default "_"+pragmaName
+// convention, preserving mattn backward-compat short aliases.
+var sqliteOptionKey = map[string]string{
+	"foreign_keys": "_fk",
+}
+
 func finalizerSQLite(cd *ConnectionDetails) {
 	// modernc.org/sqlite (registered as "sqlite3") requires pragmas via
-	// _pragma=name(value) DSN params. Legacy mattn-style params (_fk,
-	// _journal_mode, _busy_timeout) are silently ignored and must be translated.
+	// _pragma=name(value) DSN params. Legacy mattn-style params are silently
+	// ignored by modernc and must be translated.
 
 	// Build url.Values from RawOptions (set when a DSN URL was parsed) or the
 	// Options map (set programmatically). url.Values supports duplicate keys,
@@ -346,12 +388,17 @@ func finalizerSQLite(cd *ConnectionDetails) {
 		}
 	}
 
-	// Translate legacy mattn-style params to _pragma equivalents.
-	for _, t := range []struct{ key, pragma string }{
-		{"_fk", "foreign_keys"},
-		{"_journal_mode", "journal_mode"},
-		{"_busy_timeout", "busy_timeout"},
-	} {
+	// _loc/_tz/_timezone are mattn-only timezone params with no modernc equivalent.
+	// modernc returns time.UTC natively; use _time_format if a different format is needed.
+	for _, k := range []string{"_loc", "tz", "timezone"} {
+		if q.Get(k) != "" {
+			log(logging.Warn, "SQLite DSN param %q has no modernc.org/sqlite equivalent and will be ignored", k)
+			q.Del(k)
+		}
+	}
+
+	// Translate all legacy mattn-style params to _pragma=name(value).
+	for _, t := range legacySQLiteParams {
 		if val := q.Get(t.key); val != "" {
 			q.Del(t.key)
 			if !sqlitePragmaSet(q, t.pragma) {
@@ -372,15 +419,31 @@ func finalizerSQLite(cd *ConnectionDetails) {
 		}
 	}
 	cd.RawOptions = q.Encode()
-	// Reflect applied defaults back into Options (legacy keys) for backward compatibility.
-	cd.setOptionWithDefault("_busy_timeout", cd.option("_busy_timeout"), "5000")
-	cd.setOptionWithDefault("_fk", cd.option("_fk"), "true")
+
+	// Reflect all applied pragmas back into cd.Options for backward-compatible
+	// reads via cd.option(). sqliteOptionKey maps pragma names to their preferred
+	// option key; everything else uses "_"+pragmaName.
+	for _, pragma := range q["_pragma"] {
+		rawName, rawValue, ok := strings.Cut(pragma, "(")
+		if !ok {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(rawName))
+		value := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rawValue), ")"))
+		key, ok := sqliteOptionKey[name]
+		if !ok {
+			key = "_" + name
+		}
+		cd.setOption(key, value)
+	}
 }
 
-// sqlitePragmaSet reports whether q already contains a _pragma entry whose
-// name starts with pragmaName (case-insensitive).
+// sqlitePragmaSet reports whether q already contains a _pragma entry for
+// pragmaName (case-insensitive). Requires the pragma name to be immediately
+// followed by '(' to avoid false matches on names sharing a common prefix
+// (e.g. "foreign_keys" vs "foreign_keys_per_table").
 func sqlitePragmaSet(q url.Values, pragmaName string) bool {
-	prefix := strings.ToLower(pragmaName)
+	prefix := strings.ToLower(pragmaName) + "("
 	for _, p := range q["_pragma"] {
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(p)), prefix) {
 			return true
