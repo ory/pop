@@ -160,7 +160,6 @@ func Test_ConnectionDetails_Finalize_SQLite_NoTimeFormatDefault(t *testing.T) {
 		"sqlite:///tmp/foo.db",
 	} {
 		t.Run(url, func(t *testing.T) {
-			t.Parallel()
 			cd := &ConnectionDetails{URL: url}
 			require.NoError(t, cd.Finalize())
 			require.NotContains(t, cd.RawOptions, "_time_format",
