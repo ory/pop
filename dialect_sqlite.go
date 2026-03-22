@@ -88,6 +88,7 @@ func (m *sqlite) Create(c *Connection, model *Model, cols columns.Columns) error
 			} else {
 				query = fmt.Sprintf("INSERT INTO %s DEFAULT VALUES", m.Quote(model.TableName()))
 			}
+			normalizeTimesToUTC(model.Value)
 			txlog(logging.SQL, c, query, model.Value)
 			res, err := c.Store.NamedExecContext(model.ctx, query, model.Value)
 			if err != nil {
@@ -102,6 +103,7 @@ func (m *sqlite) Create(c *Connection, model *Model, cols columns.Columns) error
 			}
 			return nil
 		}
+		normalizeTimesToUTC(model.Value)
 		if err := genericCreate(c, model, cols, m); err != nil {
 			return fmt.Errorf("sqlite create: %w", err)
 		}
@@ -111,6 +113,7 @@ func (m *sqlite) Create(c *Connection, model *Model, cols columns.Columns) error
 
 func (m *sqlite) Update(c *Connection, model *Model, cols columns.Columns) error {
 	return m.locker(m.smGil, func() error {
+		normalizeTimesToUTC(model.Value)
 		if err := genericUpdate(c, model, cols, m); err != nil {
 			return fmt.Errorf("sqlite update: %w", err)
 		}
@@ -121,6 +124,7 @@ func (m *sqlite) Update(c *Connection, model *Model, cols columns.Columns) error
 func (m *sqlite) UpdateQuery(c *Connection, model *Model, cols columns.Columns, query Query) (int64, error) {
 	rowsAffected := int64(0)
 	err := m.locker(m.smGil, func() error {
+		normalizeTimesToUTC(model.Value)
 		if n, err := genericUpdateQuery(c, model, cols, m, query, sqlx.QUESTION); err != nil {
 			rowsAffected = n
 			return fmt.Errorf("sqlite update query: %w", err)
@@ -425,6 +429,12 @@ func finalizerSQLite(cd *ConnectionDetails) {
 			q.Del(k)
 			delete(cd.Options, k)
 		}
+	}
+
+	// Default to mattn-compatible on-disk format for correct lexicographic ordering.
+	if q.Get("_time_format") == "" {
+		q.Set("_time_format", "sqlite")
+		cd.setOption("_time_format", "sqlite")
 	}
 
 	// Apply default busy_timeout if not configured.
