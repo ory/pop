@@ -430,12 +430,7 @@ func finalizerSQLite(cd *ConnectionDetails) {
 		}
 	}
 
-	// Apply default _time_format=sqlite so modernc.org/sqlite uses the same
-	// on-disk format as mattn/go-sqlite3 ("2006-01-02 15:04:05.999999999-07:00").
-	// This ensures correct lexicographic ordering for cursor-based pagination
-	// and byte-for-byte compatibility with databases written by mattn.
-	// normalizeTimesToUTC (called after every read) corrects the FixedZone("", 0)
-	// artefact that this format introduces when reading back UTC values.
+	// Default to mattn-compatible on-disk format for correct lexicographic ordering.
 	if q.Get("_time_format") == "" {
 		q.Set("_time_format", "sqlite")
 		cd.setOption("_time_format", "sqlite")

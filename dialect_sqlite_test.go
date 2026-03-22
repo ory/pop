@@ -145,13 +145,6 @@ func Test_ConnectionDetails_FinalizeOSPath(t *testing.T) {
 
 func Test_ConnectionDetails_Finalize_SQLite_TimeFormatDefault(t *testing.T) {
 	t.Parallel()
-	// finalizerSQLite must inject _time_format=sqlite as a default so that
-	// modernc.org/sqlite uses the same on-disk format as mattn/go-sqlite3:
-	//   "2006-01-02 15:04:05.999999999-07:00"
-	// This ensures byte-for-byte identical storage and correct lexicographic
-	// ordering for cursor-based pagination on timestamp columns.
-	// normalizeTimesToUTC (called after every read) corrects the FixedZone("", 0)
-	// artefact that _time_format=sqlite introduces when reading back UTC values.
 	for _, url := range []string{
 		"sqlite3:///tmp/foo.db",
 		"sqlite:///tmp/foo.db",
@@ -338,7 +331,6 @@ func Test_normalizeTimesToUTC(t *testing.T) {
 	})
 
 	t.Run("pointer-to-struct with pointer time field", func(t *testing.T) {
-		// *Inner containing *time.Time — two levels of pointer indirection.
 		type Inner struct{ CreatedAt *time.Time }
 		type outer struct{ Details *Inner }
 		ts := fixedNow
@@ -357,7 +349,6 @@ func Test_normalizeTimesToUTC(t *testing.T) {
 	})
 }
 
-// openMemorySQLite opens a new in-memory SQLite connection for self-contained tests.
 func openMemorySQLite(t *testing.T) *Connection {
 	t.Helper()
 	c, err := NewConnection(&ConnectionDetails{URL: "sqlite://:memory:"})
@@ -367,9 +358,6 @@ func openMemorySQLite(t *testing.T) *Connection {
 	return c
 }
 
-// timeItem is the model backing the time_items table used by write-path UTC tests.
-// It uses a custom "ts" column that pop does not auto-manage, so tests can
-// assert on exact instant preservation without interference from setUpdatedAt.
 type timeItem struct {
 	ID int       `db:"id"`
 	Ts time.Time `db:"ts"`
@@ -381,7 +369,7 @@ func TestSqlite_Create_NormalizesTimesToUTC(t *testing.T) {
 		`CREATE TABLE time_items (id INTEGER PRIMARY KEY AUTOINCREMENT, ts DATETIME NOT NULL)`,
 	).Exec())
 
-	fixedZone := time.FixedZone("offset", 3600) // UTC+1, not UTC
+	fixedZone := time.FixedZone("offset", 3600)
 	nonUTC := time.Now().Truncate(time.Second).In(fixedZone)
 
 	item := &timeItem{Ts: nonUTC}
@@ -397,7 +385,6 @@ func TestSqlite_Update_NormalizesTimesToUTC(t *testing.T) {
 		`CREATE TABLE time_items (id INTEGER PRIMARY KEY AUTOINCREMENT, ts DATETIME NOT NULL)`,
 	).Exec())
 
-	// Seed a row.
 	item := &timeItem{Ts: time.Now().UTC()}
 	require.NoError(t, c.Create(item))
 
