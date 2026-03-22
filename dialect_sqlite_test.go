@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var sqliteDefaultOptions = map[string]string{"_busy_timeout": "5000", "_fk": "1"}
+var sqliteDefaultOptions = map[string]string{"_busy_timeout": "5000", "_fk": "1", "_time_format": "sqlite"}
 
 func Test_ConnectionDetails_Finalize_SQLite_URL_Only(t *testing.T) {
 	r := require.New(t)
@@ -36,7 +36,7 @@ func Test_ConnectionDetails_Finalize_SQLite_OverrideOptions_URL_Only(t *testing.
 	r.NoError(err)
 	r.Equal("sqlite3", cd.Dialect, "given dialect: N/A")
 	r.Equal("/tmp/foo.db", cd.Database, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
-	r.EqualValues(map[string]string{"_fk": "false", "_busy_timeout": "5000"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
+	r.EqualValues(map[string]string{"_fk": "false", "_busy_timeout": "5000", "_time_format": "sqlite"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
 }
 
 func Test_ConnectionDetails_Finalize_SQLite_SynURL_Only(t *testing.T) {
@@ -127,7 +127,7 @@ func Test_ConnectionDetails_Finalize_SQLite_OverrideOptions_Synonym_Path(t *test
 	r.NoError(err)
 	r.Equal("sqlite3", cd.Dialect, "given dialect: N/A")
 	r.Equal("/tmp/foo.db", cd.Database, "given url: sqlite3:///tmp/foo.db")
-	r.EqualValues(map[string]string{"_fk": "false", "_busy_timeout": "5000"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
+	r.EqualValues(map[string]string{"_fk": "false", "_busy_timeout": "5000", "_time_format": "sqlite"}, cd.Options, "given url: sqlite3:///tmp/foo.db?_fk=false&foo=bar")
 }
 
 func Test_ConnectionDetails_FinalizeOSPath(t *testing.T) {
@@ -143,18 +143,15 @@ func Test_ConnectionDetails_FinalizeOSPath(t *testing.T) {
 	r.EqualValues(p, cd.Database)
 }
 
-func Test_ConnectionDetails_Finalize_SQLite_NoTimeFormatDefault(t *testing.T) {
+func Test_ConnectionDetails_Finalize_SQLite_TimeFormatDefault(t *testing.T) {
 	t.Parallel()
-	// finalizerSQLite must NOT add _time_format=sqlite as a default.
-	//
-	// _time_format=sqlite maps to the write format "2006-01-02 15:04:05.999999999-07:00"
-	// (not timezone-free as the name implies). For a UTC time this produces
-	// "2024-06-15 10:30:00+00:00", which time.Parse reads back as
-	// FixedZone("", 0) — a broken, unnamed zero-offset zone distinct from time.UTC.
-	//
-	// Without any _time_format, modernc uses t.String() which includes the
-	// timezone name ("... +0000 UTC"). Go's time.Parse recognises "UTC" as the
-	// canonical time.UTC pointer, so no FixedZone workarounds are needed.
+	// finalizerSQLite must inject _time_format=sqlite as a default so that
+	// modernc.org/sqlite uses the same on-disk format as mattn/go-sqlite3:
+	//   "2006-01-02 15:04:05.999999999-07:00"
+	// This ensures byte-for-byte identical storage and correct lexicographic
+	// ordering for cursor-based pagination on timestamp columns.
+	// normalizeTimesToUTC (called after every read) corrects the FixedZone("", 0)
+	// artefact that _time_format=sqlite introduces when reading back UTC values.
 	for _, url := range []string{
 		"sqlite3:///tmp/foo.db",
 		"sqlite:///tmp/foo.db",
@@ -162,8 +159,8 @@ func Test_ConnectionDetails_Finalize_SQLite_NoTimeFormatDefault(t *testing.T) {
 		t.Run(url, func(t *testing.T) {
 			cd := &ConnectionDetails{URL: url}
 			require.NoError(t, cd.Finalize())
-			require.NotContains(t, cd.RawOptions, "_time_format",
-				"finalizerSQLite must not inject _time_format — doing so would break UTC round-trips")
+			require.Contains(t, cd.RawOptions, "_time_format=sqlite",
+				"finalizerSQLite must inject _time_format=sqlite for mattn-compatible on-disk format")
 		})
 	}
 }
@@ -339,6 +336,79 @@ func Test_normalizeTimesToUTC(t *testing.T) {
 		require.Equal(t, time.UTC, r.Details.CreatedAt.Location())
 		require.True(t, utcNow.Equal(r.Details.CreatedAt))
 	})
+
+	t.Run("pointer-to-struct with pointer time field", func(t *testing.T) {
+		// *Inner containing *time.Time — two levels of pointer indirection.
+		type Inner struct{ CreatedAt *time.Time }
+		type outer struct{ Details *Inner }
+		ts := fixedNow
+		r := &outer{Details: &Inner{CreatedAt: &ts}}
+		normalizeTimesToUTC(r)
+		require.NotNil(t, r.Details.CreatedAt)
+		require.Equal(t, time.UTC, r.Details.CreatedAt.Location())
+		require.True(t, utcNow.Equal(*r.Details.CreatedAt))
+	})
+
+	t.Run("nil pointer-to-struct with pointer time field no panic", func(t *testing.T) {
+		type Inner struct{ CreatedAt *time.Time }
+		type outer struct{ Details *Inner }
+		r := &outer{Details: nil}
+		require.NotPanics(t, func() { normalizeTimesToUTC(r) })
+	})
+}
+
+// openMemorySQLite opens a new in-memory SQLite connection for self-contained tests.
+func openMemorySQLite(t *testing.T) *Connection {
+	t.Helper()
+	c, err := NewConnection(&ConnectionDetails{URL: "sqlite://:memory:"})
+	require.NoError(t, err)
+	require.NoError(t, c.Open())
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+// timeItem is the model backing the time_items table used by write-path UTC tests.
+// It uses a custom "ts" column that pop does not auto-manage, so tests can
+// assert on exact instant preservation without interference from setUpdatedAt.
+type timeItem struct {
+	ID int       `db:"id"`
+	Ts time.Time `db:"ts"`
+}
+
+func TestSqlite_Create_NormalizesTimesToUTC(t *testing.T) {
+	c := openMemorySQLite(t)
+	require.NoError(t, c.RawQuery(
+		`CREATE TABLE time_items (id INTEGER PRIMARY KEY AUTOINCREMENT, ts DATETIME NOT NULL)`,
+	).Exec())
+
+	fixedZone := time.FixedZone("offset", 3600) // UTC+1, not UTC
+	nonUTC := time.Now().Truncate(time.Second).In(fixedZone)
+
+	item := &timeItem{Ts: nonUTC}
+	require.NoError(t, c.Create(item))
+
+	require.Equal(t, time.UTC, item.Ts.Location(), "Create must normalize times to UTC")
+	require.True(t, nonUTC.Equal(item.Ts), "instant must be preserved")
+}
+
+func TestSqlite_Update_NormalizesTimesToUTC(t *testing.T) {
+	c := openMemorySQLite(t)
+	require.NoError(t, c.RawQuery(
+		`CREATE TABLE time_items (id INTEGER PRIMARY KEY AUTOINCREMENT, ts DATETIME NOT NULL)`,
+	).Exec())
+
+	// Seed a row.
+	item := &timeItem{Ts: time.Now().UTC()}
+	require.NoError(t, c.Create(item))
+
+	fixedZone := time.FixedZone("offset", 3600)
+	nonUTC := time.Now().Add(time.Minute).Truncate(time.Second).In(fixedZone)
+	item.Ts = nonUTC
+
+	require.NoError(t, c.Save(item))
+
+	require.Equal(t, time.UTC, item.Ts.Location(), "Save must normalize times to UTC")
+	require.True(t, nonUTC.Equal(item.Ts), "instant must be preserved")
 }
 
 // parsePragmas returns the _pragma slice from cd.RawOptions.
