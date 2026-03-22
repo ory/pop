@@ -377,6 +377,11 @@ func TestSqlite_Create_NormalizesTimesToUTC(t *testing.T) {
 
 	require.Equal(t, time.UTC, item.Ts.Location(), "Create must normalize times to UTC")
 	require.True(t, nonUTC.Equal(item.Ts), "instant must be preserved")
+
+	stored := &timeItem{}
+	require.NoError(t, c.Find(stored, item.ID))
+	require.Equal(t, time.UTC, stored.Ts.Location(), "stored value must be UTC")
+	require.True(t, nonUTC.Equal(stored.Ts), "stored instant must be preserved")
 }
 
 func TestSqlite_Update_NormalizesTimesToUTC(t *testing.T) {
@@ -396,6 +401,11 @@ func TestSqlite_Update_NormalizesTimesToUTC(t *testing.T) {
 
 	require.Equal(t, time.UTC, item.Ts.Location(), "Save must normalize times to UTC")
 	require.True(t, nonUTC.Equal(item.Ts), "instant must be preserved")
+
+	stored := &timeItem{}
+	require.NoError(t, c.Find(stored, item.ID))
+	require.Equal(t, time.UTC, stored.Ts.Location(), "stored value must be UTC")
+	require.True(t, nonUTC.Equal(stored.Ts), "stored instant must be preserved")
 }
 
 // parsePragmas returns the _pragma slice from cd.RawOptions.

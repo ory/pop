@@ -88,6 +88,7 @@ func (m *sqlite) Create(c *Connection, model *Model, cols columns.Columns) error
 			} else {
 				query = fmt.Sprintf("INSERT INTO %s DEFAULT VALUES", m.Quote(model.TableName()))
 			}
+			normalizeTimesToUTC(model.Value)
 			txlog(logging.SQL, c, query, model.Value)
 			res, err := c.Store.NamedExecContext(model.ctx, query, model.Value)
 			if err != nil {
@@ -100,23 +101,22 @@ func (m *sqlite) Create(c *Connection, model *Model, cols columns.Columns) error
 			if err != nil {
 				return err
 			}
-			normalizeTimesToUTC(model.Value)
 			return nil
 		}
+		normalizeTimesToUTC(model.Value)
 		if err := genericCreate(c, model, cols, m); err != nil {
 			return fmt.Errorf("sqlite create: %w", err)
 		}
-		normalizeTimesToUTC(model.Value)
 		return nil
 	})
 }
 
 func (m *sqlite) Update(c *Connection, model *Model, cols columns.Columns) error {
 	return m.locker(m.smGil, func() error {
+		normalizeTimesToUTC(model.Value)
 		if err := genericUpdate(c, model, cols, m); err != nil {
 			return fmt.Errorf("sqlite update: %w", err)
 		}
-		normalizeTimesToUTC(model.Value)
 		return nil
 	})
 }
