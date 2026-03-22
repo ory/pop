@@ -124,6 +124,7 @@ func (m *sqlite) Update(c *Connection, model *Model, cols columns.Columns) error
 func (m *sqlite) UpdateQuery(c *Connection, model *Model, cols columns.Columns, query Query) (int64, error) {
 	rowsAffected := int64(0)
 	err := m.locker(m.smGil, func() error {
+		normalizeTimesToUTC(model.Value)
 		if n, err := genericUpdateQuery(c, model, cols, m, query, sqlx.QUESTION); err != nil {
 			rowsAffected = n
 			return fmt.Errorf("sqlite update query: %w", err)
