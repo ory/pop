@@ -11,7 +11,7 @@ import (
 
 	"github.com/gobuffalo/fizz"
 	"github.com/gobuffalo/fizz/translators"
-	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib" // Load pgx driver
 	"github.com/jmoiron/sqlx"
 	"github.com/ory/pop/v6/columns"
@@ -227,10 +227,10 @@ func newPostgreSQL(deets *ConnectionDetails) (dialect, error) {
 }
 
 // urlParserPostgreSQL parses the options the same way jackc/pgconn does:
-// https://pkg.go.dev/github.com/jackc/pgconn?tab=doc#ParseConfig
+// https://pkg.go.dev/github.com/jackc/pgx/v5#ParseConfig
 // After parsed, they are set to ConnectionDetails instance
 func urlParserPostgreSQL(cd *ConnectionDetails) error {
-	conf, err := pgconn.ParseConfig(cd.URL)
+	conf, err := pgx.ParseConfig(cd.URL)
 	if err != nil {
 		return err
 	}
