@@ -368,9 +368,18 @@ var sqliteInternalKeys = map[string]bool{
 }
 
 // moderncSQLiteParams is the complete set of DSN query parameters recognised
-// by modernc.org/sqlite. Any key not in this set will be warned and stripped.
-// Source: modernc.org/sqlite@v1.47.0/sqlite.go applyQueryParams() and
-// modernc.org/sqlite@v1.47.0/conn.go newConn().
+// by modernc.org/sqlite or by SQLite itself via SQLITE_OPEN_URI. Any key not
+// in this set will be warned and stripped.
+//
+// Go driver params (modernc.org/sqlite@v1.48.0/sqlite.go applyQueryParams()
+// and conn.go newConn()):
+//   - vfs, _pragma, _time_format, _txlock, _time_integer_format, _inttotime,
+//     _texttotime
+//
+// SQLite URI params (https://sqlite.org/uri.html) — processed by SQLite
+// itself when the DSN starts with "file:" and SQLITE_OPEN_URI is set, which
+// modernc.org/sqlite enables unconditionally:
+//   - mode, cache, psow, nolock, immutable
 var moderncSQLiteParams = map[string]bool{
 	"vfs":                  true, // VFS name
 	"_pragma":              true, // PRAGMA name(value); repeatable
@@ -379,6 +388,11 @@ var moderncSQLiteParams = map[string]bool{
 	"_time_integer_format": true, // integer time repr: unix/unix_milli/unix_micro/unix_nano
 	"_inttotime":           true, // convert integer columns to time.Time
 	"_texttotime":          true, // affect ColumnTypeScanType for TEXT date columns
+	"mode":                 true, // SQLite URI: ro | rw | rwc | memory
+	"cache":                true, // SQLite URI: shared | private
+	"psow":                 true, // SQLite URI: powersafe overwrite
+	"nolock":               true, // SQLite URI: disable locking
+	"immutable":            true, // SQLite URI: read-only, no change check
 }
 
 func finalizerSQLite(cd *ConnectionDetails) {
