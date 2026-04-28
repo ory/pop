@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -544,6 +545,57 @@ func Test_ConnectionDetails_Finalize_SQLite_Programmatic(t *testing.T) {
 	require.Equal(t, "WAL", cd.Options["_journal_mode"])
 	require.Equal(t, "10000", cd.Options["_busy_timeout"])
 	require.Equal(t, "1", cd.Options["_fk"])
+}
+
+// Test_ConnectionDetails_Finalize_SQLite_URIParams verifies that SQLite URI
+// query parameters (mode, cache, psow, nolock, immutable) are preserved in
+// RawOptions. These are processed by SQLite itself when SQLITE_OPEN_URI is
+// set — modernc.org/sqlite passes the URI through unchanged — and stripping
+// them breaks `mode=memory` in-memory databases by falling back to disk files
+// named after the URI path.
+func Test_ConnectionDetails_Finalize_SQLite_URIParams(t *testing.T) {
+	for _, tc := range []struct {
+		key, value string
+	}{
+		{"mode", "memory"},
+		{"cache", "shared"},
+		{"psow", "0"},
+		{"nolock", "1"},
+		{"immutable", "1"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			cd := &ConnectionDetails{
+				URL: fmt.Sprintf("sqlite3://file:x?%s=%s", tc.key, tc.value),
+			}
+			require.NoError(t, cd.Finalize())
+			q, err := url.ParseQuery(cd.RawOptions)
+			require.NoError(t, err)
+			require.Equal(t, tc.value, q.Get(tc.key),
+				"SQLite URI param %q=%q must survive finalizer", tc.key, tc.value)
+		})
+	}
+}
+
+// Test_ConnectionDetails_Finalize_SQLite_MemoryDSNStaysInMemory opens a DSN
+// with mode=memory&cache=shared and asserts no file is created on disk.
+// Regression test for the bug where finalizerSQLite stripped SQLite URI
+// params, causing in-memory DSNs to silently fall back to disk files.
+func Test_ConnectionDetails_Finalize_SQLite_MemoryDSNStaysInMemory(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "memtest")
+	cd := &ConnectionDetails{
+		URL: fmt.Sprintf("sqlite3://file:%s?mode=memory&cache=shared", dbPath),
+	}
+	require.NoError(t, cd.Finalize())
+
+	db, err := sql.Open("sqlite3", cd.Database+"?"+cd.RawOptions)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec("CREATE TABLE t(x INT); INSERT INTO t VALUES (1)")
+	require.NoError(t, err)
+
+	_, err = os.Stat(dbPath)
+	require.True(t, os.IsNotExist(err),
+		"mode=memory DSN must not create an on-disk file at %q", dbPath)
 }
 
 // Test_ConnectionDetails_Finalize_SQLite_DirectPragma verifies that
