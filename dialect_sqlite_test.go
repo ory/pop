@@ -581,12 +581,9 @@ func Test_ConnectionDetails_Finalize_SQLite_URIParams(t *testing.T) {
 // Regression test for the bug where finalizerSQLite stripped SQLite URI
 // params, causing in-memory DSNs to silently fall back to disk files.
 func Test_ConnectionDetails_Finalize_SQLite_MemoryDSNStaysInMemory(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-
-	const name = "memtest"
+	dbPath := filepath.Join(t.TempDir(), "memtest")
 	cd := &ConnectionDetails{
-		URL: fmt.Sprintf("sqlite3://file:%s?mode=memory&cache=shared", name),
+		URL: fmt.Sprintf("sqlite3://file:%s?mode=memory&cache=shared", dbPath),
 	}
 	require.NoError(t, cd.Finalize())
 
@@ -596,9 +593,9 @@ func Test_ConnectionDetails_Finalize_SQLite_MemoryDSNStaysInMemory(t *testing.T)
 	_, err = db.Exec("CREATE TABLE t(x INT); INSERT INTO t VALUES (1)")
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(dir, name))
+	_, err = os.Stat(dbPath)
 	require.True(t, os.IsNotExist(err),
-		"mode=memory DSN must not create an on-disk file at %q", name)
+		"mode=memory DSN must not create an on-disk file at %q", dbPath)
 }
 
 // Test_ConnectionDetails_Finalize_SQLite_DirectPragma verifies that
