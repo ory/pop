@@ -167,7 +167,12 @@ func (c *Connection) Transaction(fn func(tx *Connection) error) error {
 		}()
 
 		err = fn(cn)
-		if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// In this case database/sql already rolls back:
+			// https://github.com/golang/go/blob/07840ceeed4afd10324a552e8c87a8ee363aa24a/src/database/sql/sql.go#L2211-L2226
+			// Therefore, the right thing to do is not attempt a second rollback, as that results in sql.ErrTxDone.
+			return err
+		} else if err != nil {
 			txlog(logging.SQL, cn, "ROLLBACK Transaction ---")
 			dberr = cn.TX.Rollback()
 		} else {
