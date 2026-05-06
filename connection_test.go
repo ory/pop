@@ -1,6 +1,3 @@
-//go:build sqlite
-// +build sqlite
-
 package pop
 
 import (
