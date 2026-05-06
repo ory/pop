@@ -170,6 +170,12 @@ func (c *Connection) Transaction(fn func(tx *Connection) error) error {
 		if err != nil {
 			txlog(logging.SQL, cn, "ROLLBACK Transaction ---")
 			dberr = cn.TX.Rollback()
+			if errors.Is(dberr, sql.ErrTxDone) {
+				// In this case database/sql already rolled back for us when the context got canceled:
+				// https://github.com/golang/go/blob/07840ceeed4afd10324a552e8c87a8ee363aa24a/src/database/sql/sql.go#L2211-L2226
+				// Therefore, the right thing to do is return the original error instead, as the sql.ErrTxDone is just a symptom.
+				return err
+			}
 		} else {
 			txlog(logging.SQL, cn, "END Transaction ---")
 			dberr = cn.TX.Commit()

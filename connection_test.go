@@ -1,12 +1,10 @@
-//go:build sqlite
-// +build sqlite
-
 package pop
 
 import (
 	"context"
 	"fmt"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/require"
 )
@@ -116,33 +114,50 @@ func Test_Connection_NewTransaction(t *testing.T) {
 }
 
 func Test_Connection_Transaction(t *testing.T) {
-	r := require.New(t)
-
 	c, err := NewConnection(&ConnectionDetails{
 		URL: "sqlite://file::memory:?_fk=true",
 	})
-	r.NoError(err)
-	r.NoError(c.Open())
+	require.NoError(t, err)
+	require.NoError(t, c.Open())
 
 	t.Run("Success", func(t *testing.T) {
 		err = c.Transaction(func(c *Connection) error {
 			return nil
 		})
-		r.NoError(err)
+		require.NoError(t, err)
 	})
 
 	t.Run("Failed", func(t *testing.T) {
 		err = c.Transaction(func(c *Connection) error {
 			return fmt.Errorf("failed")
 		})
-		r.ErrorContains(err, "failed")
+		require.ErrorContains(t, err, "failed")
 	})
 
 	t.Run("Panic", func(t *testing.T) {
-		r.PanicsWithValue("inner function panic", func() {
-			c.Transaction(func(c *Connection) error {
+		require.PanicsWithValue(t, "inner function panic", func() {
+			_ = c.Transaction(func(c *Connection) error {
 				panic("inner function panic")
 			})
+		})
+	})
+
+	t.Run("context canceled", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			c, err := NewConnection(&ConnectionDetails{
+				URL: "sqlite://file::memory:?_fk=true",
+			})
+			require.NoError(t, err)
+			require.NoError(t, c.Open())
+			t.Cleanup(func() { _ = c.Close() })
+
+			ctx, cancel := context.WithCancel(t.Context())
+			err = c.WithContext(ctx).Transaction(func(c *Connection) error {
+				cancel()
+				synctest.Wait()
+				return c.RawQuery("SELECT 1").Exec()
+			})
+			require.ErrorIs(t, err, context.Canceled)
 		})
 	})
 }

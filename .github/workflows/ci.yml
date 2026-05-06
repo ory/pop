@@ -45,7 +45,7 @@ jobs:
           SODA_DIALECT: "mysql"
           MYSQL_PORT: 3307
         run: |
-          go build -v -tags sqlite -o tsoda ./soda
+          go build -v -o tsoda ./soda
           ./tsoda drop -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda create -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda migrate -e $SODA_DIALECT -p ./testdata/migrations
@@ -55,7 +55,7 @@ jobs:
           SODA_DIALECT: "mysql"
           MYSQL_PORT: 3307
         run: |
-          go test -tags sqlite -race -cover ./...
+          go test -race -cover ./...
 
   pg-tests:
     name: PostgreSQL tests - Go v${{ matrix.go-version }}
@@ -89,7 +89,7 @@ jobs:
           SODA_DIALECT: "postgres"
           POSTGRESQL_URL: "postgres://postgres:postgres%23@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pop_test?sslmode=disable"
         run: |
-          go build -v -tags sqlite -o tsoda ./soda
+          go build -o tsoda ./soda
           ./tsoda drop -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda create -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda migrate -e $SODA_DIALECT -p ./testdata/migrations
@@ -99,7 +99,7 @@ jobs:
           SODA_DIALECT: "postgres"
           POSTGRESQL_URL: "postgres://postgres:postgres%23@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pop_test?sslmode=disable"
         run: |
-          go test -tags sqlite -race -cover ./...
+          go test -race -cover ./...
 
   crdbssl-tests:
     name: Cockroach SSL tests - Go v${{ matrix.go-version }}
@@ -134,7 +134,7 @@ jobs:
         env:
           SODA_DIALECT: "cockroach_ssl"
         run: |
-          go build -v -tags sqlite -o tsoda ./soda
+          go build -v -o tsoda ./soda
           ./tsoda drop -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda create -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda migrate -e $SODA_DIALECT -p ./testdata/migrations
@@ -143,7 +143,7 @@ jobs:
         env:
           SODA_DIALECT: "cockroach_ssl"
         run: |
-          go test -tags sqlite -race -cover ./...
+          go test -race -cover ./...
 
   crdb-tests:
     name: Cockroach tests
@@ -175,7 +175,7 @@ jobs:
           SODA_DIALECT: "cockroach"
           COCKROACH_PORT: 26257
         run: |
-          go build -v -tags sqlite -o tsoda ./soda
+          go build -v -o tsoda ./soda
           ./tsoda drop -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda create -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda migrate -e $SODA_DIALECT -p ./testdata/migrations
@@ -185,7 +185,7 @@ jobs:
           SODA_DIALECT: "cockroach"
           COCKROACH_PORT: 26257
         run: |
-          go test -tags sqlite -race -cover ./...
+          go test -race -cover ./...
 
   sqlite-tests:
     name: SQLite tests ${{ matrix.os }} - Go v${{ matrix.go-version }}
@@ -210,7 +210,7 @@ jobs:
         env:
           SODA_DIALECT: "sqlite"
         run: |
-          go build -v -tags sqlite -o tsoda ./soda
+          go build -v -o tsoda ./soda
           ./tsoda drop -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda create -e $SODA_DIALECT -p ./testdata/migrations
           ./tsoda migrate -e $SODA_DIALECT -p ./testdata/migrations
@@ -221,11 +221,11 @@ jobs:
         env:
           SODA_DIALECT: "sqlite"
         run: |
-          go test -tags sqlite -race -cover ./...
+          go test -race -cover ./...
 
       - name: Short Test
         if: ${{ matrix.os == 'windows-latest' }}
         env:
           SODA_DIALECT: "sqlite"
         run: |
-          go test -tags sqlite ./...
+          go test ./...
