@@ -88,7 +88,10 @@ func (cd *ConnectionDetails) withURL() error {
 		log(logging.Warn, "One or more of connection details are specified in database.yml. Override them with values in URL.")
 	}
 
-	if up, ok := urlParser[cd.Dialect]; ok {
+	dialectsMu.RLock()
+	up, ok := urlParser[cd.Dialect]
+	dialectsMu.RUnlock()
+	if ok {
 		return up(cd)
 	}
 
@@ -132,7 +135,10 @@ func (cd *ConnectionDetails) Finalize() error {
 		}
 	}
 
-	if fin, ok := finalizer[cd.Dialect]; ok {
+	dialectsMu.RLock()
+	fin, ok := finalizer[cd.Dialect]
+	dialectsMu.RUnlock()
+	if ok {
 		fin(cd)
 	}
 

@@ -67,7 +67,10 @@ func NewConnection(deets *ConnectionDetails) (*Connection, error) {
 	c := &Connection{}
 	c.setID()
 
-	if nc, ok := newConnection[deets.Dialect]; ok {
+	dialectsMu.RLock()
+	nc, ok := newConnection[deets.Dialect]
+	dialectsMu.RUnlock()
+	if ok {
 		c.Dialect, err = nc(deets)
 		if err != nil {
 			return c, fmt.Errorf("could not create new connection: %w", err)

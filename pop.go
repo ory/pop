@@ -1,6 +1,9 @@
 package pop
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // EagerMode type for all eager modes supported in pop.
 type EagerMode uint8
@@ -46,8 +49,15 @@ var finalizer = make(map[string]func(*ConnectionDetails))
 // map of connection creators
 var newConnection = make(map[string]func(*ConnectionDetails) (dialect, error))
 
+// dialectsMu guards the dialect registration maps above so that RegisterDialect
+// can be called safely alongside connection creation. Built-in dialects
+// populate the maps from init() which completes before any runtime read.
+var dialectsMu sync.RWMutex
+
 // DialectSupported checks support for the given database dialect
 func DialectSupported(d string) bool {
+	dialectsMu.RLock()
+	defer dialectsMu.RUnlock()
 	for _, ad := range AvailableDialects {
 		if ad == d {
 			return true
@@ -64,7 +74,10 @@ func DialectSupported(d string) bool {
 // dialect so you need to check it with `DialectSupported()`.
 func CanonicalDialect(synonym string) string {
 	d := strings.ToLower(synonym)
-	if syn, ok := dialectSynonyms[d]; ok {
+	dialectsMu.RLock()
+	syn, ok := dialectSynonyms[d]
+	dialectsMu.RUnlock()
+	if ok {
 		d = syn
 	}
 	return d

@@ -46,3 +46,11 @@ type dialect interface {
 type afterOpenable interface {
 	AfterOpen(*Connection) error
 }
+
+// Dialect is implemented by every database dialect. Custom dialects passed to
+// RegisterDialect must satisfy this interface.
+type Dialect = dialect
+
+// AfterOpenable is an optional interface a Dialect may implement to run logic
+// after a connection is opened.
+type AfterOpenable = afterOpenable
