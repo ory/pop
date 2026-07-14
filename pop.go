@@ -35,8 +35,21 @@ func SetEagerMode(eagerMode EagerMode) {
 	loadingAssociationsStrategy = eagerMode
 }
 
-// AvailableDialects lists the available database dialects
+// AvailableDialects lists the available database dialects. When dialects may be
+// registered at runtime via RegisterDialect, use GetAvailableDialects instead of
+// reading this slice directly to avoid racing with the registration.
 var AvailableDialects []string
+
+// GetAvailableDialects returns a snapshot copy of the registered dialect names.
+// Unlike reading the exported AvailableDialects slice directly, this is safe to
+// call concurrently with RegisterDialect.
+func GetAvailableDialects() []string {
+	dialectsMu.RLock()
+	defer dialectsMu.RUnlock()
+	out := make([]string, len(AvailableDialects))
+	copy(out, AvailableDialects)
+	return out
+}
 
 var dialectSynonyms = make(map[string]string)
 

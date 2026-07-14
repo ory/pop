@@ -32,8 +32,11 @@ type DialectRegistration struct {
 
 // RegisterDialect registers a custom database dialect. It is safe to call
 // concurrently with connection creation, but must be called before a connection
-// for the dialect is created. It returns an error if the registration is
-// invalid or collides with an already-registered dialect name or synonym.
+// for the dialect is created. To avoid racing with unsynchronized readers of
+// the exported AvailableDialects slice, register during package init or program
+// startup, before any goroutines that use pop are spawned, or read the list via
+// GetAvailableDialects. It returns an error if the registration is invalid or
+// collides with an already-registered dialect name or synonym.
 func RegisterDialect(reg DialectRegistration) error {
 	name := strings.ToLower(strings.TrimSpace(reg.Name))
 	if name == "" {
@@ -69,9 +72,7 @@ func RegisterDialect(reg DialectRegistration) error {
 	}
 
 	AvailableDialects = append(AvailableDialects, name)
-	newConnection[name] = func(cd *ConnectionDetails) (dialect, error) {
-		return reg.NewConnection(cd)
-	}
+	newConnection[name] = reg.NewConnection
 	for _, syn := range synonyms {
 		dialectSynonyms[syn] = name
 	}
