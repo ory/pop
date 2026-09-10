@@ -199,16 +199,22 @@ func (c *Connection) Transaction(fn func(tx *Connection) error) error {
 
 // Rollback will open a new transaction and automatically rollback that transaction
 // when the inner function returns, regardless. This can be useful for tests, etc...
-func (c *Connection) Rollback(fn func(tx *Connection)) error {
+func (c *Connection) Rollback(fn func(tx *Connection)) (err error) {
 	// TODO: the name of the method could be changed to express it better.
 	cn, err := c.NewTransaction()
 	if err != nil {
 		return err
 	}
 	txlog(logging.SQL, cn, "BEGIN Transaction for Rollback ---")
+	// Defer the rollback so a panic or runtime.Goexit in fn still releases the transaction.
+	defer func() {
+		txlog(logging.SQL, cn, "ROLLBACK Transaction as planned ---")
+		if rerr := cn.TX.Rollback(); err == nil {
+			err = rerr
+		}
+	}()
 	fn(cn)
-	txlog(logging.SQL, cn, "ROLLBACK Transaction as planned ---")
-	return cn.TX.Rollback()
+	return nil
 }
 
 // NewTransaction starts a new transaction on the connection

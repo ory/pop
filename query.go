@@ -104,6 +104,7 @@ func (q *Query) rawQuery(stmt string, args ...interface{}) *Query {
 // side effects. Queries inside a transaction are never retried.
 func (q *Query) RetryableRead() *Query {
 	if q.RawSQL != nil && q.RawSQL.Fragment != "" {
+		// The explicit retry assertion applies only to the current raw statement.
 		q.retryableRead = false
 		q.retryableRawSQL = q.RawSQL.Fragment
 	}

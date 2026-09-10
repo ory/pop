@@ -3,9 +3,11 @@ package pop
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"testing"
 	"testing/synctest"
 
+	"github.com/gobuffalo/nulls"
 	"github.com/stretchr/testify/require"
 )
 
@@ -160,4 +162,27 @@ func Test_Connection_Transaction(t *testing.T) {
 			require.ErrorIs(t, err, context.Canceled)
 		})
 	})
+}
+
+func Test_Rollback_Releases_Transaction_When_Callback_Goexits(t *testing.T) {
+	if PDB == nil {
+		t.Skip("skipping integration tests")
+	}
+	r := require.New(t)
+
+	writeResult := make(chan error, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = PDB.Rollback(func(tx *Connection) {
+			writeResult <- tx.Create(&User{Name: nulls.NewString("abandoned")})
+			runtime.Goexit()
+		})
+	}()
+	<-done
+	r.NoError(<-writeResult)
+
+	u := &User{Name: nulls.NewString("after abandoned rollback")}
+	r.NoError(PDB.Create(u))
+	r.NoError(PDB.Destroy(u))
 }

@@ -365,8 +365,10 @@ func Test_Save(t *testing.T) {
 
 		uat := u.UpdatedAt.UnixNano()
 
-		r.NoError(tx.Save(u))
+		// Sleep before the second save: on a coarse clock both saves otherwise
+		// land in the same tick and UpdatedAt does not move.
 		time.Sleep(1 * time.Second)
+		r.NoError(tx.Save(u))
 		r.NotEqual(uat, u.UpdatedAt.UnixNano())
 	})
 }
