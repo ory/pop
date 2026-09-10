@@ -271,7 +271,7 @@ func (m *sqlite) TruncateAll(tx *Connection) error {
 		Name string `db:"name"`
 	}{}
 
-	err := tx.RawQuery(tableNames).All(&names)
+	err := tx.RawQuery(tableNames).RetryableRead().All(&names)
 	if err != nil {
 		return err
 	}

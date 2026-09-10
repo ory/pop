@@ -9,5 +9,9 @@ Pop, by default, follows conventions that were defined by the ActiveRecord Ruby 
 * If there is a timestamp column named "created_at", "CreatedAt" on the `struct`, it will be set with the current time when the record is created.
 * If there is a timestamp column named "updated_at", "UpdatedAt" on the `struct`, it will be set with the current time when the record is updated.
 * Default databases are lowercase, underscored versions of the `struct` name. Examples: User{} is "users", FooBar{} is "foo_bars", etc...
+
+# Read queries survive a closed connection
+
+Pop-generated read queries whose connection closes mid-flight run again on a new one. This is unconditional and needs no configuration. Raw queries are one-shot unless the caller marks them with RetryableRead. Only mark a raw query when rerunning it cannot cause side effects. Statements inside a transaction are always one-shot because they cannot acquire a new connection.
 */
 package pop

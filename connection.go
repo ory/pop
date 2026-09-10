@@ -179,7 +179,7 @@ func (c *Connection) Transaction(fn func(tx *Connection) error) error {
 				// Therefore, the right thing to do is return the original error instead, as the sql.ErrTxDone is just a symptom.
 				return err
 			}
-			if dberr != nil && dberr.Error() == "conn closed" {
+			if IsConnectionClosed(dberr) {
 				// see https://github.com/jackc/pgx/issues/2551
 				return err
 			}
