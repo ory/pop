@@ -70,7 +70,9 @@ func (q *Query) First(model interface{}) error {
 	err := q.Connection.timeFunc("First", func() error {
 		q.Limit(1)
 		m = NewModel(model, q.Connection.Context())
-		if err := q.Connection.Dialect.SelectOne(q.Connection, m, *q); err != nil {
+		if err := q.retryRead(m.ctx, func() error {
+			return q.Connection.Dialect.SelectOne(q.Connection, m, *q)
+		}); err != nil {
 			return err
 		}
 		return m.afterFind(q.Connection, false)
@@ -108,7 +110,9 @@ func (q *Query) Last(model interface{}) error {
 		q.Limit(1)
 		q.Order("created_at DESC, id DESC")
 		m = NewModel(model, q.Connection.Context())
-		if err := q.Connection.Dialect.SelectOne(q.Connection, m, *q); err != nil {
+		if err := q.retryRead(m.ctx, func() error {
+			return q.Connection.Dialect.SelectOne(q.Connection, m, *q)
+		}); err != nil {
 			return err
 		}
 		return m.afterFind(q.Connection, false)
@@ -144,7 +148,9 @@ func (q *Query) All(models interface{}) error {
 	var m *Model
 	err := q.Connection.timeFunc("All", func() error {
 		m = NewModel(models, q.Connection.Context())
-		err := q.Connection.Dialect.SelectMany(q.Connection, m, *q)
+		err := q.retryRead(m.ctx, func() error {
+			return q.Connection.Dialect.SelectMany(q.Connection, m, *q)
+		})
 		if err != nil {
 			return err
 		}
@@ -273,7 +279,7 @@ func (q *Query) eagerDefaultAssociations(model interface{}) error {
 		}
 
 		sqlSentence, args := query.ToSQL(NewModel(association.Interface(), query.Connection.Context()))
-		query = query.RawQuery(sqlSentence, args...)
+		query = query.rawQuery(sqlSentence, args...)
 
 		if association.Kind() == reflect.Slice || association.Kind() == reflect.Array {
 			err = query.All(association.Interface())
@@ -340,8 +346,10 @@ func (q *Query) Exists(model interface{}) (bool, error) {
 		}
 
 		existsQuery := fmt.Sprintf("SELECT EXISTS (%s)", query)
-		txlog(logging.SQL, q.Connection, existsQuery, args...)
-		return q.Connection.Store.Get(&res, existsQuery, args...)
+		txlog(logging.SQL, tmpQuery.Connection, existsQuery, args...)
+		return tmpQuery.retryRead(tmpQuery.Connection.Context(), func() error {
+			return tmpQuery.Connection.Store.Get(&res, existsQuery, args...)
+		})
 	})
 	return res, err
 }
@@ -386,8 +394,10 @@ func (q Query) CountByField(model interface{}, field string) (int, error) {
 		}
 
 		countQuery := fmt.Sprintf("SELECT COUNT(%s) AS row_count FROM (%s) a", field, query)
-		txlog(logging.SQL, q.Connection, countQuery, args...)
-		return q.Connection.Store.Get(res, countQuery, args...)
+		txlog(logging.SQL, tmpQuery.Connection, countQuery, args...)
+		return tmpQuery.retryRead(tmpQuery.Connection.Context(), func() error {
+			return tmpQuery.Connection.Store.Get(res, countQuery, args...)
+		})
 	})
 	return res.Count, err
 }

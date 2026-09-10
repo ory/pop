@@ -323,7 +323,7 @@ func (p *cockroach) TruncateAll(tx *Connection) error {
 	tableQuery := p.tablesQuery()
 
 	var tables []table
-	if err := tx.RawQuery(tableQuery, tx.MigrationTableName(), tx.Dialect.Details().Database).All(&tables); err != nil {
+	if err := tx.RawQuery(tableQuery, tx.MigrationTableName(), tx.Dialect.Details().Database).RetryableRead().All(&tables); err != nil {
 		return err
 	}
 
@@ -347,7 +347,7 @@ func (p *cockroach) TruncateAll(tx *Connection) error {
 }
 
 func (p *cockroach) AfterOpen(c *Connection) error {
-	if err := c.RawQuery(`select version() AS "version"`).First(&p.info); err != nil {
+	if err := c.RawQuery(`select version() AS "version"`).RetryableRead().First(&p.info); err != nil {
 		return err
 	}
 	if s := strings.Split(p.info.VersionString, " "); len(s) > 3 {

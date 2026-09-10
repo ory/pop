@@ -33,6 +33,8 @@ type Query struct {
 	Paginator               *Paginator
 	Connection              *Connection
 	Operation               operation
+	retryableRead           bool
+	retryableRawSQL         string
 }
 
 // Clone will fill targetQ query with the connection used in q, if
@@ -51,6 +53,8 @@ func (q *Query) Clone(targetQ *Query) {
 	targetQ.havingClauses = q.havingClauses
 	targetQ.addColumns = q.addColumns
 	targetQ.Operation = q.Operation
+	targetQ.retryableRead = q.retryableRead
+	targetQ.retryableRawSQL = q.retryableRawSQL
 
 	if q.Paginator != nil {
 		paginator := *q.Paginator
@@ -65,7 +69,8 @@ func (q *Query) Clone(targetQ *Query) {
 
 // RawQuery will override the query building feature of Pop and will use
 // whatever query you want to execute against the `Connection`. You can continue
-// to use the `?` argument syntax.
+// to use the `?` argument syntax. Raw queries are one-shot unless marked with
+// RetryableRead.
 //
 //	c.RawQuery("select * from foo where id = ?", 1)
 func (c *Connection) RawQuery(stmt string, args ...interface{}) *Query {
@@ -74,11 +79,35 @@ func (c *Connection) RawQuery(stmt string, args ...interface{}) *Query {
 
 // RawQuery will override the query building feature of Pop and will use
 // whatever query you want to execute against the `Connection`. You can continue
-// to use the `?` argument syntax.
+// to use the `?` argument syntax. Raw queries are one-shot unless marked with
+// RetryableRead.
 //
 //	q.RawQuery("select * from foo where id = ?", 1)
 func (q *Query) RawQuery(stmt string, args ...interface{}) *Query {
+	q.retryableRead = false
+	q.retryableRawSQL = ""
+	return q.rawQuery(stmt, args...)
+}
+
+func (q *Query) rawQuery(stmt string, args ...interface{}) *Query {
 	q.RawSQL = &clause{stmt, args}
+	if q.retryableRead {
+		q.retryableRawSQL = stmt
+	} else {
+		q.retryableRawSQL = ""
+	}
+	return q
+}
+
+// RetryableRead marks a raw query as read-only so Pop can retry it when its
+// connection closes. Call this only when rerunning the statement cannot cause
+// side effects. Queries inside a transaction are never retried.
+func (q *Query) RetryableRead() *Query {
+	if q.RawSQL != nil && q.RawSQL.Fragment != "" {
+		// The explicit retry assertion applies only to the current raw statement.
+		q.retryableRead = false
+		q.retryableRawSQL = q.RawSQL.Fragment
+	}
 	return q
 }
 
@@ -200,12 +229,13 @@ func (q *Query) EagerPreload(fields ...string) *Query {
 // Q will create a new "empty" query from the current connection.
 func Q(c *Connection) *Query {
 	return &Query{
-		RawSQL:      &clause{},
-		Connection:  c,
-		eager:       c.eager,
-		eagerFields: c.eagerFields,
-		eagerMode:   eagerModeNil,
-		Operation:   Select,
+		RawSQL:        &clause{},
+		Connection:    c,
+		eager:         c.eager,
+		eagerFields:   c.eagerFields,
+		eagerMode:     eagerModeNil,
+		Operation:     Select,
+		retryableRead: true,
 	}
 }
 
