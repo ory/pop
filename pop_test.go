@@ -81,6 +81,13 @@ func ts(s string) string {
 	return PDB.Dialect.TranslateSQL(s)
 }
 
+// waitForClockTick blocks long enough that the next write records a distinct
+// UpdatedAt. Windows clocks are coarse enough that two writes completing inside
+// one tick read the same instant from nowFunc.
+func waitForClockTick() {
+	time.Sleep(time.Second)
+}
+
 type Client struct {
 	ClientID string `db:"id"`
 }

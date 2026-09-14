@@ -365,9 +365,7 @@ func Test_Save(t *testing.T) {
 
 		uat := u.UpdatedAt.UnixNano()
 
-		// Sleep before the second save: on a coarse clock both saves otherwise
-		// land in the same tick and UpdatedAt does not move.
-		time.Sleep(1 * time.Second)
+		waitForClockTick()
 		r.NoError(tx.Save(u))
 		r.NotEqual(uat, u.UpdatedAt.UnixNano())
 	})
@@ -392,6 +390,7 @@ func Test_Save_With_Slice(t *testing.T) {
 
 		uat := u[0].UpdatedAt.UnixNano()
 
+		waitForClockTick()
 		r.NoError(tx.Save(u))
 		r.NotEqual(uat, u[0].UpdatedAt.UnixNano())
 	})
@@ -1573,7 +1572,7 @@ func Test_UpdateQuery(t *testing.T) {
 		r.NoError(tx.Reload(&u1))
 		r.NoError(tx.Reload(&u2))
 		r.NoError(tx.Reload(&u3))
-		time.Sleep(time.Millisecond * 1)
+		waitForClockTick()
 
 		// No affected rows
 		count, err := tx.Where("name = ?", "Nemo").UpdateQuery(&User{Bio: nulls.NewString("did-change")}, "bio")
@@ -1643,6 +1642,7 @@ func Test_UpdateColumns_UpdatedAt(t *testing.T) {
 		updatedAtBefore := user.UpdatedAt
 
 		user.Name.String = "Bar"
+		waitForClockTick()
 		err := tx.UpdateColumns(&user, "name", "updated_at") // Update name and updated_at
 		r.NoError(err)
 
