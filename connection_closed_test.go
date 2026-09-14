@@ -60,10 +60,7 @@ func TestIsConnectionClosed(t *testing.T) {
 			errors.Join(fmt.Errorf("wrapped: %w", &pgconn.PgError{Code: "40003"}), &pgconn.PgError{Code: "08006"}), false,
 		},
 	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.want, IsConnectionClosed(tc.err), name)
-		})
+	assert.Equal(t, tc.want, IsConnectionClosed(tc.err), name)
 	}
 }
 
