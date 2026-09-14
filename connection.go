@@ -209,9 +209,7 @@ func (c *Connection) Rollback(fn func(tx *Connection)) (err error) {
 	// Defer the rollback so a panic or runtime.Goexit in fn still releases the transaction.
 	defer func() {
 		txlog(logging.SQL, cn, "ROLLBACK Transaction as planned ---")
-		if rerr := cn.TX.Rollback(); err == nil {
-			err = rerr
-		}
+		err = errors.Join(err, cn.TX.Rollback())
 	}()
 	fn(cn)
 	return nil

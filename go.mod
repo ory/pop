@@ -1,6 +1,6 @@
 module github.com/ory/pop/v6
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/XSAM/otelsql v0.41.0

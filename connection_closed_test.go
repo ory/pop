@@ -62,7 +62,7 @@ func TestIsConnectionClosed(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, IsConnectionClosed(tc.err))
+			assert.Equal(t, tc.want, IsConnectionClosed(tc.err), name)
 		})
 	}
 }
@@ -79,7 +79,7 @@ func TestSQLState(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, SQLState(tc.err))
+			assert.Equal(t, tc.want, SQLState(tc.err), name)
 		})
 	}
 }

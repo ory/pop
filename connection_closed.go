@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -53,33 +54,29 @@ func containsSQLState(err error, states ...string) bool {
 	if err == nil {
 		return false
 	}
-	if state, ok := err.(interface{ SQLState() string }); ok {
-		for _, candidate := range states {
-			if state.SQLState() == candidate {
-				return true
-			}
-		}
+	if state, ok := err.(interface{ SQLState() string }); ok && slices.Contains(states, state.SQLState()) {
+		return true
 	}
 	switch wrapped := err.(type) {
 	case interface{ Unwrap() []error }:
-		for _, child := range wrapped.Unwrap() {
-			if containsSQLState(child, states...) {
-				return true
-			}
-		}
+		return slices.ContainsFunc(wrapped.Unwrap(), func(child error) bool {
+			return containsSQLState(child, states...)
+		})
 	case interface{ Unwrap() error }:
 		return containsSQLState(wrapped.Unwrap(), states...)
 	}
 	return false
 }
 
+// sqlStateError is an error that reports a SQLSTATE, as pgconn and lib/pq do.
+type sqlStateError interface {
+	error
+	SQLState() string
+}
+
 // SQLState returns the SQLSTATE an error reports, or "" when it reports none.
 func SQLState(err error) string {
-	var state interface {
-		error
-		SQLState() string
-	}
-	if errors.As(err, &state) {
+	if state, ok := errors.AsType[sqlStateError](err); ok {
 		return state.SQLState()
 	}
 	return ""
