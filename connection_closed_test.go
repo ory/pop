@@ -77,9 +77,6 @@ func TestSQLState(t *testing.T) {
 		"wrapped":   {fmt.Errorf("select: %w", &pgconn.PgError{Code: "08006"}), "08006"},
 		"unrelated": {errors.New("boom"), ""},
 	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.want, SQLState(tc.err), name)
-		})
+		assert.Equal(t, tc.want, SQLState(tc.err), name)
 	}
 }
