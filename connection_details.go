@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ory/pop/v6/internal/defaults"
 	"github.com/ory/pop/v6/logging"
 	"go.opentelemetry.io/otel/trace"
@@ -57,6 +58,11 @@ type ConnectionDetails struct {
 	TracerProvider trace.TracerProvider
 	// AllowMinPool enables min pool enforcement.
 	AllowMinPool bool
+	// PGXPoolConfigModifier, if set, is called with the configuration parsed
+	// from the URL before the pgxpool connection pool is created, for example
+	// to install a pgxpool.AcquireTracer. It is only called when the pgxpool
+	// connection pool is used (see AllowMinPool).
+	PGXPoolConfigModifier func(*pgxpool.Config)
 }
 
 var dialectX = regexp.MustCompile(`\S+://`)
