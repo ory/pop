@@ -38,7 +38,14 @@ func openPotentiallyInstrumentedConnection(ctx context.Context, c dialect, dsn s
 	)
 	// If "pool_min_conns" is set in the DSN, it means that we use the pgx pool feature flag.
 	if c.Details().AllowMinPool && strings.Contains(dsn, "pool_min_conns=") && (CanonicalDialect(driver) == nameCockroach || CanonicalDialect(driver) == namePostgreSQL) {
-		pool, err := pgxpool.New(ctx, dsn)
+		config, err := pgxpool.ParseConfig(dsn)
+		if err != nil {
+			return nil, nil, err
+		}
+		if modify := c.Details().PGXPoolConfigModifier; modify != nil {
+			modify(config)
+		}
+		pool, err := pgxpool.NewWithConfig(ctx, config)
 		if err != nil {
 			return nil, nil, err
 		}
